@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Charon, Wortzeiten neu vermessen)
+const K = {"brief": 0.52, "geblitzt": 1.78, "n71": 2.63, "statt": 3.11, "n50": 3.3, "monat": 4.79, "fahrverbot": 5.29, "nichtnur": 6.99, "keinauto": 7.58, "dasheisst": 8.6, "arbeit": 9.67, "kunden": 10.15, "kunden_w": 10.38, "kita": 10.96, "kita_w": 11.23, "aber": 12.87, "fehler": 13.81, "recht": 15.27, "prueft": 16.18, "mess": 17.55, "eich": 18.7, "foto": 19.4, "punkt": 20.25, "ein": 21.56, "verfahren": 22.16, "eingestellt": 22.71, "fahren": 24.19, "einfach": 24.86, "weiter": 25.34, "schicken": 26.15, "bescheid2": 26.96, "erst": 27.8, "kostenlos": 28.83};
+const DUR = 31.21;

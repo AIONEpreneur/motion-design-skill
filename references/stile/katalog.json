@@ -1,0 +1,225 @@
+{
+ "stile": [
+  {
+   "nr": "01",
+   "name": "Papier und Blaupause",
+   "art": "2D-Illustration mit Figuren",
+   "wirkung": "freundlich-technisch, macht Unsichtbares sichtbar",
+   "passt_zu": "IT, Software, Technik, Datenschutz, Prozesse",
+   "beispiel_firma": "Netzwerk Nord IT",
+   "vorlage": "vorlagen/01-zwei-welten",
+   "video": "beispiele/01.mp4"
+  },
+  {
+   "nr": "02",
+   "name": "Tusche-Querschnitt mit Ameise",
+   "art": "2D-Tuschezeichnung im Querschnitt",
+   "wirkung": "handgemacht, erklärend, Blick unter die Oberfläche",
+   "passt_zu": "Garten, Bau, Boden, Sanitär, Handwerk",
+   "beispiel_firma": "Grünwerk Gartenbau",
+   "vorlage": "vorlagen/02-tusche-querschnitt",
+   "video": "beispiele/02.mp4"
+  },
+  {
+   "nr": "03",
+   "name": "Pergament und Tuschelinien",
+   "art": "Linienzeichnung mit 3D-Linienmodell",
+   "wirkung": "edel, präzise, traditionsbewusst",
+   "passt_zu": "Architektur, Sanierung, Immobilien, Denkmal",
+   "beispiel_firma": "Bauhütte Architekten",
+   "vorlage": "vorlagen/03-pergament-linienbau",
+   "video": "beispiele/03.mp4"
+  },
+  {
+   "nr": "04",
+   "name": "Leuchtende Ölpinsel-Welt",
+   "art": "Gemalte Leuchtwelt",
+   "wirkung": "emotional, filmisch, ernst",
+   "passt_zu": "Versicherung, Vorsorge, Pflege, Familie",
+   "beispiel_firma": "Halt Versicherungsmakler",
+   "vorlage": "vorlagen/04-kinematisch-leuchtend",
+   "video": "beispiele/04.mp4"
+  },
+  {
+   "nr": "05",
+   "name": "Poetischer Naturfilm",
+   "art": "Poetischer Naturfilm",
+   "wirkung": "ruhig, hochwertig, poetisch",
+   "passt_zu": "Solar, Energie, Umwelt, Wellness",
+   "beispiel_firma": "Sonnenhof Solar",
+   "vorlage": "vorlagen/05-cinematic-natur",
+   "video": "beispiele/05.mp4"
+  },
+  {
+   "nr": "06",
+   "name": "Papiercollage bei Nacht",
+   "art": "Papiercollage",
+   "wirkung": "warm, niedlich, gemütlich",
+   "passt_zu": "Tiere, Kinder, Familie, Unterkunft",
+   "beispiel_firma": "Pfotenhaus",
+   "vorlage": "vorlagen/06-papier-collage-ebenen",
+   "video": "beispiele/06.mp4"
+  },
+  {
+   "nr": "07",
+   "name": "Leuchtlinie über Datengitter",
+   "art": "3D-Datenflug",
+   "wirkung": "modern, Zahlen und Kurven",
+   "passt_zu": "Steuer, Finanzen, Controlling, Preise",
+   "beispiel_firma": "Kanzlei Weber",
+   "vorlage": "vorlagen/07-dunkle-daten-motion",
+   "video": "beispiele/07.mp4"
+  },
+  {
+   "nr": "08",
+   "name": "Fotorealer Produktspot",
+   "art": "Fotorealistisches 3D (Blender)",
+   "wirkung": "Premium, Produkt im Mittelpunkt",
+   "passt_zu": "Getränke, physische Produkte, Lieferservice",
+   "beispiel_firma": "Quellwerk Office",
+   "vorlage": "vorlagen/08-produkt-spot",
+   "video": "beispiele/08.mp4"
+  },
+  {
+   "nr": "09",
+   "name": "App-Spot in Gelb",
+   "art": "Handy-App-Spot",
+   "wirkung": "markenstark, modern",
+   "passt_zu": "App-Dienste, Buchung, Reinigung, Lieferung",
+   "beispiel_firma": "Klarwerk Reinigung",
+   "vorlage": "vorlagen/09-marken-spot-ui",
+   "video": "beispiele/09.mp4"
+  },
+  {
+   "nr": "10",
+   "name": "Schwebende Produkt-Oberfläche",
+   "art": "Software-Produktvideo",
+   "wirkung": "sachlich-modern",
+   "passt_zu": "SaaS, Kundenportale, Verwaltung, Online-Dienste",
+   "beispiel_firma": "Domus Hausverwaltung",
+   "vorlage": "vorlagen/10-saas-produktvideo",
+   "video": "beispiele/10.mp4"
+  },
+  {
+   "nr": "11",
+   "name": "Gemalter Bühnen-Cartoon",
+   "art": "Aquarell-Cartoon mit Figuren",
+   "wirkung": "witzig, warm, kindgerecht",
+   "passt_zu": "Kinder, Arztpraxen, Bildung, angstbesetzte Themen",
+   "beispiel_firma": "Zahnfee Kinderzahnarzt",
+   "vorlage": "vorlagen/11-gemalter-cartoon",
+   "video": "beispiele/11.mp4"
+  },
+  {
+   "nr": "12",
+   "name": "Verkehrsschild-Grafik",
+   "art": "Flache Infografik mit Schlagworten",
+   "wirkung": "klar, direkt, seriös",
+   "passt_zu": "Recht, Behörden, Ratgeber, Verkehr",
+   "beispiel_firma": "Recht am Steuer",
+   "vorlage": "vorlagen/12-vox-stil",
+   "video": "beispiele/12.mp4"
+  },
+  {
+   "nr": "13",
+   "name": "Low-Poly-3D, 90er-Konsole",
+   "art": "Low-Poly-3D im Retro-Look",
+   "wirkung": "verspielt, nostalgisch, humorvoll",
+   "passt_zu": "Umzug, Freizeit, junge Zielgruppe",
+   "beispiel_firma": "Kistenheld Umzüge",
+   "vorlage": "vorlagen/13-ps1-low-poly",
+   "video": "beispiele/13.mp4"
+  },
+  {
+   "nr": "14",
+   "name": "Skizzenbuch-Illustration",
+   "art": "Gemaltes Skizzenbuch",
+   "wirkung": "lernnah, freundlich",
+   "passt_zu": "Nachhilfe, Schulung, Coaching",
+   "beispiel_firma": "Lernwerk Nachhilfe",
+   "vorlage": "vorlagen/14-skizzenbuch",
+   "video": "beispiele/14.mp4"
+  },
+  {
+   "nr": "15",
+   "name": "Nachtbühne mit Papier",
+   "art": "Dunkle Markenanimation",
+   "wirkung": "kreativ, markig",
+   "passt_zu": "Agenturen, Webdesign, Marketing",
+   "beispiel_firma": "Werkseite",
+   "vorlage": "vorlagen/15-brand-motion",
+   "video": "beispiele/15.mp4"
+  },
+  {
+   "nr": "16",
+   "name": "Diagramm mit Papieretiketten",
+   "art": "Erklär-Diagramm mit Etiketten",
+   "wirkung": "sachlich, technisch erklärend",
+   "passt_zu": "Heizung, Haustechnik, Medizintechnik",
+   "beispiel_firma": "Wärmewerk Haustechnik",
+   "vorlage": "vorlagen/16-diagramm-papierlabels",
+   "video": "beispiele/16.mp4"
+  },
+  {
+   "nr": "17",
+   "name": "Historische Tuschekarte",
+   "art": "Historische Karte mit Routen",
+   "wirkung": "Bewegung im Raum",
+   "passt_zu": "Kurier, Logistik, Tourismus, regionale Dienste",
+   "beispiel_firma": "Stadtbote Kurier",
+   "vorlage": "vorlagen/17-historische-karte",
+   "video": "beispiele/17.mp4"
+  },
+  {
+   "nr": "18",
+   "name": "Holzschnitt Schwarz-Weiß",
+   "art": "Holzschnitt Schwarz-Weiß",
+   "wirkung": "spannend, dramatisch",
+   "passt_zu": "Notdienste, Sicherheit, Schlüsseldienst",
+   "beispiel_firma": "Riegel 24",
+   "vorlage": "vorlagen/18-holzschnitt",
+   "video": "beispiele/18.mp4"
+  },
+  {
+   "nr": "19",
+   "name": "Elegante Goldtypografie",
+   "art": "Kinetische Typografie",
+   "wirkung": "edel, ruhig, vertrauensvoll",
+   "passt_zu": "Beratung, Kanzlei, Premium, Coaching",
+   "beispiel_firma": "Klarsicht Beratung",
+   "vorlage": "vorlagen/19-elegante-typo",
+   "video": "beispiele/19.mp4"
+  },
+  {
+   "nr": "20",
+   "name": "Papierbühne",
+   "art": "Papier-Puppenbühne (Stop-Motion)",
+   "wirkung": "herzlich, künstlerisch",
+   "passt_zu": "Musik, Kultur, Kurse, Familie",
+   "beispiel_firma": "Tonleiter Musikschule",
+   "vorlage": "vorlagen/20-papierbuehne",
+   "video": "beispiele/20.mp4"
+  },
+  {
+   "nr": "21",
+   "name": "Pixel-Art-Spielwelt",
+   "art": "Pixel-Art-Spiel",
+   "wirkung": "jung, spielerisch, Herausforderung",
+   "passt_zu": "Fahrschule, Sport, Prüfungen, junge Zielgruppe",
+   "beispiel_firma": "Fahrschule Grün-Pfeil",
+   "vorlage": "vorlagen/21-pixel-art",
+   "video": "beispiele/21.mp4"
+  },
+  {
+   "nr": "22",
+   "name": "Flacher Produkt-Launch",
+   "art": "Typografie plus Produktoberfläche",
+   "wirkung": "clean, modern",
+   "passt_zu": "Personalvermittlung, B2B-Plattformen, Software",
+   "beispiel_firma": "Pflegebrücke Personal",
+   "vorlage": "vorlagen/22-saas-launch-flat",
+   "video": "beispiele/22.mp4"
+  }
+ ],
+ "hinweis": "Pfade sind relativ zum Skill-Ordner."
+}

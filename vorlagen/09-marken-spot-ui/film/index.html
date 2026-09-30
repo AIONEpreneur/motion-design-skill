@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Klarwerk Reinigung – V7</title>
+<style>
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #F0EDE0; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Klarwerk Reinigung V5 – im Look des Nomad-Werbespots: Creme-Fläche, EIN sattes Gelb, dunkelbraune Tinte,
+// Telefon vor großem gelben Kreis mit echter App-Oberfläche und Mauszeiger, Sperrbildschirm mit fallenden Mitteilungen
+// und großer Zahl rechts mit segmentierter Linie, Headlines Wort für Wort aus der Unschärfe, warme Kino-Lifestyle-Bilder
+// (Cycles-Renderings, blender/), Endkarte in Vollgelb mit Balken-Logo.
+// V7: Headline als Ganzes, Kennzahlen ohne Satz-Unterzeilen, Push-ins auf Details, alle Zeiten aus K (zeiten.py).
+const W = 1920, H = 1080, FPS = 30;
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const C = { creme: '#F0EDE0', yel: '#FBCC00', ink: '#221004', grey: '#8C8578', line: '#E6E1D3', lockA: '#4D2810', lockB: '#1E0C03', green: '#2DB35B' };
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lerp = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - clamp(x), 3), e5 = x => 1 - Math.pow(1 - clamp(x), 5), eio = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eback = x => { x = clamp(x); const c1 = 1.6, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+function font(w, px, fam = 'DM') { return `${w} ${px}px ${fam === 'F' ? 'Familjen' : 'DMSans'}`; }
+function txt(s, x, y, f, col, align = 'left', base = 'alphabetic') { X.font = f; X.fillStyle = col; X.textAlign = align; X.textBaseline = base; X.fillText(s, x, y); }
+function rr(x, y, w, h, r) { X.beginPath(); X.roundRect(x, y, w, h, r); }
+
+// ---------- Lifestyle-Bildfolgen ----------
+const LIFE = [
+  { dir: 'b1', a: K.cut.b1, b: K.cut.b2, n: 44 }, { dir: 'b2', a: K.cut.b2, b: K.cut.am, n: 44 }, { dir: 'f', a: K.cut.f, b: K.cut.pm, n: 54 }, { dir: 'h', a: K.cut.h, b: K.cut.ende, n: 78 },
+];
+const cache = new Map();
+function frameImg(dir, f) {
+  const key = dir + f; if (cache.has(key)) return cache.get(key);
+  const im = new Image(); im.src = `frames/${dir}/${String(f).padStart(4, '0')}.jpg`;
+  const p = im.decode().then(() => im).catch(() => null); cache.set(key, p);
+  if (cache.size > 30) cache.delete(cache.keys().next().value);
+  return p;
+}
+const thumbs = [];
+// V7: Push-in auf das Detail, fertig auf dem Wort (Kamerasprache der Lifestyle-Fotos im Original) [Wort, x, y, Zoom]
+const LPUSH = { b1: [K.klebt, 860, 900, 1.2], b2: [K.quillt, 1000, 560, 1.15], f: [K.dasselbe, 1050, 830, 1.3], h: [K.kunde2, 890, 560, 1.15] };
+
+// ---------- Headline: Wort für Wort aus der Unschärfe ----------
+function headline(words, times, x, y, px, col = C.ink, align = 'left', outT = 1e9) {   // V7: gleiche Zeit für alle Wörter = als Ganzes
+  X.save(); X.font = font(500, px, 'F'); X.textBaseline = 'alphabetic';
+  const sp = X.measureText(' ').width; const ws = words.map(w => X.measureText(w).width);
+  const tot = ws.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let cx = align === 'center' ? x - tot / 2 : x;
+  words.forEach((w, i) => {
+    const k = clamp((tnow - (times[i] - 0.32)) / 0.3), o = clamp((tnow - outT) / 0.25);
+    const a = eo(k) * (1 - o), blur = (1 - eo(k)) * 12 + o * 12;
+    if (a > 0.002) { X.filter = blur > 0.3 ? `blur(${blur.toFixed(1)}px)` : 'none'; X.globalAlpha = a; X.fillStyle = col;
+      X.fillText(w, cx, y + (1 - eo(k)) * 18 - o * 10); }
+    cx += ws[i] + sp;
+  });
+  X.restore();
+}
+
+// ---------- Telefon ----------
+const PW = 450, PH = 960;
+function phone(cx, cy, s, screen) {
+  X.save(); X.translate(cx, cy); X.scale(s, s);
+  X.shadowColor = 'rgba(40,20,5,0.28)'; X.shadowBlur = 60; X.shadowOffsetY = 26;
+  rr(-PW / 2, -PH / 2, PW, PH, 72); X.fillStyle = '#120C09'; X.fill(); X.shadowColor = 'transparent';
+  rr(-PW / 2 + 5, -PH / 2 + 5, PW - 10, PH - 10, 68); X.strokeStyle = '#3a2a22'; X.lineWidth = 2; X.stroke();
+  const sx = -PW / 2 + 15, sy = -PH / 2 + 15, sw = PW - 30, sh = PH - 30;
+  X.save(); rr(sx, sy, sw, sh, 58); X.clip(); X.translate(sx, sy); screen(sw, sh); X.restore();
+  rr(-62, -PH / 2 + 30, 124, 36, 18); X.fillStyle = '#050302'; X.fill();
+  X.restore();
+}
+function statusBar(sw, dark) {
+  const col = dark ? '#ffffff' : '#111111';
+  txt('9:41', 48, 58, font(700, 22), col);
+  for (let i = 0; i < 3; i++) { rr(sw - 94 + i * 17, 44, 12, 12, 3); X.fillStyle = col; X.fill(); }
+}
+function logoMark(x, y, s, col = C.ink, k = 1) {
+  // drei abgerundete Balken (K-Form aus Balken, wie das Balken-Logo des Originals)
+  const bars = [[0, 0, 0.26, 1, 0], [0.34, 0.0, 0.26, 0.62, 0.55], [0.34, 0.42, 0.26, 0.62, -0.55]];
+  X.save(); X.translate(x, y); X.scale(s, s); X.fillStyle = col;
+  bars.forEach(([bx, by, bw, bh, rot], i) => {
+    const kk = clamp(k * 3 - i); const off = (1 - e5(kk)) * 1.4;
+    X.save(); X.globalAlpha *= clamp(kk * 3); X.translate(bx + bw / 2 + off, by + bh / 2); X.rotate(rot * e5(kk));
+    rr(-bw / 2, -bh / 2, bw, bh, bw / 2); X.fill(); X.restore();
+  });
+  X.restore();
+}
+function appIcon(x, y, s) { rr(x, y, s, s, s * 0.24); X.fillStyle = C.yel; X.fill(); logoMark(x + s * 0.27, y + s * 0.2, s * 0.6, C.ink); }
+function cursor(x, y, press = 0) {
+  X.save(); X.translate(x, y); const sc = 1 - 0.15 * press; X.scale(sc * 1.25, sc * 1.25);
+  X.beginPath(); X.moveTo(0, 0); X.lineTo(0, 26); X.lineTo(6.5, 20); X.lineTo(11, 30); X.lineTo(15, 28); X.lineTo(10.5, 18.5); X.lineTo(19, 18.5); X.closePath();
+  X.fillStyle = '#111'; X.strokeStyle = '#fff'; X.lineWidth = 2.2; X.lineJoin = 'round'; X.stroke(); X.fill();
+  X.restore();
+}
+// Mauszeiger-Bahn: Liste [t, x, y] (Telefon-Bildschirm-Koordinaten), Klicks [t]
+function cursorAt(path) {
+  let i = 0; while (i + 1 < path.length && tnow >= path[i + 1][0]) i++;
+  if (i + 1 >= path.length) return [path[i][1], path[i][2]];
+  const [t0, x0, y0] = path[i], [t1, x1, y1] = path[i + 1], k = eio((tnow - t0) / (t1 - t0));
+  return [lerp(x0, x1, k), lerp(y0, y1, k)];
+}
+const pressAt = clicks => clicks.reduce((m, c) => Math.max(m, tnow >= c - 0.05 && tnow < c + 0.12 ? 1 - Math.abs(tnow - c) / 0.12 : 0), 0);
+
+// ---------- App-Bildschirme ----------
+function appHeader(sw) {
+  appIcon(40, 92, 40); txt('Klarwerk', 92, 121, font(700, 24), C.ink);
+}
+function card(x, y, w, h, sel = 0) {
+  X.save(); X.shadowColor = 'rgba(40,25,10,0.07)'; X.shadowBlur = 14; X.shadowOffsetY = 4;
+  rr(x, y, w, h, 18); X.fillStyle = '#fff'; X.fill(); X.restore();
+  rr(x, y, w, h, 18); X.strokeStyle = sel > 0 ? `rgba(34,16,4,${sel})` : C.line; X.lineWidth = sel > 0 ? 2.5 : 1.5; X.stroke();
+}
+function pillBtn(x, y, w, h, label, dark = 0) {
+  rr(x, y, w, h, h / 2); X.fillStyle = dark > 0.5 ? C.ink : C.yel; X.fill();
+  txt(label, x + w / 2, y + h / 2 + 1, font(700, 22), dark > 0.5 ? '#fff' : C.ink, 'center', 'middle');
+}
+function screenChoose(sw, sh) {
+  X.fillStyle = '#fff'; X.fillRect(0, 0, sw, sh); statusBar(sw, false); appHeader(sw);
+  txt('Was soll sauber', 40, 200, font(700, 34), C.ink); txt('werden?', 40, 240, font(700, 34), C.ink);
+  txt('Wählen Sie Ihre Räume.', 40, 278, font(500, 19), C.grey);
+  const sel = clamp((tnow - K.reinigung) / 0.15);
+  [['Büro', 'Schreibtische · Küche · Böden'], ['Praxis', 'Behandlung · Empfang'], ['Laden', 'Verkaufsfläche · Schaufenster']].forEach(([a, b], i) => {
+    const y = 318 + i * 116; const s = i === 0 ? sel : 0;
+    card(28, y, sw - 56, 98, s);
+    rr(46, y + 22, 54, 54, 14); X.fillStyle = i === 0 && s > 0.5 ? C.yel : '#F5F1E4'; X.fill();
+    logoMark(62, y + 34, 26, C.ink);
+    txt(a, 118, y + 48, font(700, 24), C.ink); txt(b, 118, y + 76, font(500, 16), C.grey);
+    if (s > 0) { X.save(); X.globalAlpha = s; X.beginPath(); X.arc(sw - 70, y + 49, 15, 0, 7); X.fillStyle = C.ink; X.fill();
+      X.strokeStyle = '#fff'; X.lineWidth = 3; X.beginPath(); X.moveTo(sw - 77, y + 49); X.lineTo(sw - 72, y + 55); X.lineTo(sw - 62, y + 43); X.stroke(); X.restore(); }
+  });
+  pillBtn(28, sh - 110, sw - 56, 62, 'Weiter');
+}
+function screenOffice(sw, sh) {
+  X.fillStyle = '#fff'; X.fillRect(0, 0, sw, sh); statusBar(sw, false); appHeader(sw);
+  txt('Ihr Büro', 40, 200, font(700, 34), C.ink); txt('Fläche und Rhythmus – der Preis steht sofort.', 40, 236, font(500, 16), C.grey);
+  // Fläche
+  txt('FLÄCHE', 40, 290, font(700, 14), C.grey);
+  const focus = clamp((tnow - (K.flaeche - 0.2)) / 0.1);
+  card(28, 302, sw - 56, 70, focus); if (focus > 0) { rr(28, 302, sw - 56, 70, 18); X.strokeStyle = C.yel; X.lineWidth = 3 * focus; X.stroke(); }
+  const typed = ['', '1', '18', '180', '180 m²'][[K.flaeche + 0.05, K.flaeche + 0.18, K.flaeche + 0.31, K.flaeche + 0.44].filter(x => tnow >= x).length];
+  txt(typed || '0 m²', 52, 347, font(700, 28), typed ? C.ink : '#C9C3B4');
+  if (focus > 0 && Math.floor(tnow * 2.5) % 2 === 0 && tnow < K.rhythmus) { X.fillStyle = C.ink; X.fillRect(56 + (typed ? X.measureText(typed).width : 0), 324, 2.5, 30); }
+  // Rhythmus
+  txt('RHYTHMUS', 40, 420, font(700, 14), C.grey);
+  const pick = clamp((tnow - K.waehlen) / 0.12);
+  ['1× / Woche', '2× / Woche', '3× / Woche'].forEach((l, i) => {
+    const w = (sw - 56 - 20) / 3, x = 28 + i * (w + 10), on = i === 1 ? pick : 0;
+    rr(x, 432, w, 60, 16); X.fillStyle = on > 0.5 ? C.ink : '#F5F1E4'; X.fill();
+    txt(l, x + w / 2, 468, font(700, 16), on > 0.5 ? '#fff' : C.ink, 'center');
+  });
+  // Festpreis
+  const price = 289;   // V7: der Festpreis steht sofort da (kein Hochzählen)
+  card(28, 520, sw - 56, 150, 0);
+  txt('Festpreis', 52, 560, font(700, 18), C.grey);
+  txt(tnow < K.festpreis - 0.12 ? '– €' : `${price} €`, 52, 628, font(700, 58), C.ink);
+  txt('pro Monat · alles inklusive', 52, 654, font(500, 15), C.grey);
+  const booked = clamp((tnow - K.sofort + 0.05) / 0.12);
+  pillBtn(28, sh - 110, sw - 56, 62, booked > 0.5 ? '✓ Gebucht' : 'Jetzt buchen', booked);
+}
+function screenDone(sw, sh) {
+  X.fillStyle = '#fff'; X.fillRect(0, 0, sw, sh); statusBar(sw, false);
+  const k = eback((tnow - (K.sofort + 0.49)) / 0.35);
+  X.save(); X.translate(sw / 2, sh * 0.42); X.scale(k, k); X.beginPath(); X.arc(0, 0, 46, 0, 7); X.fillStyle = C.green; X.fill();
+  X.strokeStyle = '#fff'; X.lineWidth = 8; X.lineCap = 'round'; X.beginPath(); X.moveTo(-18, 2); X.lineTo(-5, 15); X.lineTo(20, -12); X.stroke(); X.restore();
+  txt('Reinigung gebucht', sw / 2, sh * 0.42 + 100, font(500, 18), C.grey, 'center');
+  txt('289 € / Monat', sw / 2, sh * 0.42 + 152, font(700, 40), C.ink, 'center');
+  X.beginPath(); X.arc(sw / 2 - 118, sh * 0.42 + 190, 7, 0, 7); X.fillStyle = C.yel; X.fill();
+  txt('Erste Reinigung: heute, 19:00', sw / 2 + 8, sh * 0.42 + 196, font(500, 16), C.grey, 'center');
+}
+function lock(sw, sh, date, time, notes) {
+  const g = X.createLinearGradient(0, 0, 0, sh); g.addColorStop(0, C.lockA); g.addColorStop(1, C.lockB); X.fillStyle = g; X.fillRect(0, 0, sw, sh);
+  statusBar(sw, true);
+  txt(date, sw / 2, 150, font(500, 20), 'rgba(255,255,255,0.85)', 'center');
+  txt(time, sw / 2, 236, font(600, 88), '#fff', 'center');
+  // Mitteilungen: fallen oben ein, schieben den Stapel nach unten
+  let y = 290; const shown = notes.filter(n => tnow >= n.t - 0.3);
+  for (let i = shown.length - 1; i >= 0; i--) {
+    const n = shown[i], k = e5((tnow - (n.t - 0.3)) / 0.3);
+    const yy = y - (1 - k) * 60; X.save(); X.globalAlpha = clamp(k * 1.5);
+    rr(18, yy, sw - 36, 96, 24); X.fillStyle = 'rgba(245,241,232,0.94)'; X.fill();
+    appIcon(36, yy + 22, 50);
+    txt(n.app, 100, yy + 36, font(700, 17), C.ink); txt('jetzt', sw - 44, yy + 36, font(500, 15), C.grey, 'right');
+    txt(n.title, 100, yy + 60, font(500, 18), C.ink); txt(n.sub, 100, yy + 82, font(500, 15), C.grey);
+    if (n.thumb !== undefined && thumbs[n.thumb]) { X.save(); rr(sw - 106, yy + 42, 60, 44, 9); X.clip(); X.drawImage(thumbs[n.thumb], sw - 106, yy + 42, 60, 44); X.restore(); }
+    X.restore();
+    y = yy + 96 * clamp(k * 1.2) + 10 * k;
+  }
+}
+// große Zahl rechts neben dem Telefon, mit segmentierter Linie
+function bigNumber(x, y, label, value, caption, segs, filled, appear, dot = C.yel, labelAt = appear) {
+  const k = eo((tnow - (appear - 0.3)) / 0.3); if (k <= 0) return;
+  const kl = eo((tnow - (labelAt - 0.3)) / 0.3);
+  X.save(); X.globalAlpha = k; X.filter = k < 1 ? `blur(${((1 - k) * 10).toFixed(1)}px)` : 'none';
+  X.save(); X.globalAlpha = k * kl; X.beginPath(); X.arc(x + 11, y - 142, 11, 0, 7); X.fillStyle = dot; X.fill();
+  txt(label, x + 32, y - 134, font(500, 26), C.grey); X.restore();
+  txt(value, x - 4, y, font(500, 150, 'F'), C.ink);
+  const sw = segs > 4 ? 96 : 150, gap = segs > 4 ? 14 : 18;
+  for (let i = 0; i < segs; i++) { const f = clamp(filled - i); X.fillStyle = C.line; X.fillRect(x + i * (sw + gap), y + 44, sw, 5); X.fillStyle = C.ink; X.fillRect(x + i * (sw + gap), y + 44, sw * f, 5); }
+  if (caption) txt(caption, x, y + 94, font(500, 24), C.grey);
+  X.restore();
+}
+function circle(cx, cy, r, k, col = C.yel) { if (k <= 0) return; X.beginPath(); X.arc(cx, cy, r * e5(k), 0, 7); X.fillStyle = col; X.fill(); }
+
+// ---------- Einstellungen ----------
+let tnow = 0;
+const NOTES_AM = [{ t: K.neun, app: 'Kalender', title: '9:00 · Brandt GmbH', sub: 'Ihr wichtigster Kunde – Besprechung' }];
+const PINGS = K.pings;
+const ROOMS = ['Küche', 'Empfang', 'Büro 1', 'Büro 2', 'Besprechung', 'Sanitär'];
+const NOTES_PM = PINGS.map((t, i) => ({ t, app: 'Klarwerk', title: `${ROOMS[i]} ✓ fertig`, sub: 'Foto vom Team ansehen', thumb: i }));
+
+async function seek(t) {
+  tnow = t = clamp(t, 0, DUR - 1e-3);
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = 1; X.filter = 'none';
+  X.fillStyle = C.creme; X.fillRect(0, 0, W, H);
+  const life = LIFE.find(l => t >= l.a && t < l.b);
+  if (life) {
+    const rate = Math.min(1, life.n / FPS / (life.b - life.a));        // längere Einstellung: gedehnt, Zwischenbilder überblendet
+    const fx = clamp((t - life.a) * FPS * rate + 1, 1, life.n), f = Math.floor(fx + 1e-6), fr = fx - f;
+    const im = await frameImg(life.dir, f), im2 = rate < 1 && fr > 0.04 && f < life.n ? await frameImg(life.dir, f + 1) : null;
+    const [pw, ppx, ppy, pz] = LPUSH[life.dir], pp = lerp(1, pz, eio((t - (pw - 0.45)) / 0.45));
+    X.setTransform(pp, 0, 0, pp, ppx - ppx * pp, ppy - ppy * pp);
+    X.filter = { b1: 'contrast(1.3) saturate(1.25) brightness(0.9) sepia(0.18)', b2: 'contrast(1.3) saturate(1.25) brightness(0.9) sepia(0.18)',
+      f: 'contrast(1.35) saturate(1.2) brightness(0.85) sepia(0.2)', h: 'contrast(1.2) saturate(1.2) brightness(1.02) sepia(0.12)' }[life.dir];
+    const zz = 1 + 0.03 * ((t - life.a) / (life.b - life.a));   // leichter Push-in wie die Kino-Bilder
+    if (im2) { X.drawImage(im, W / 2 - W * zz / 2, H / 2 - H * zz / 2, W * zz, H * zz); X.globalAlpha = fr; X.drawImage(im2, W / 2 - W * zz / 2, H / 2 - H * zz / 2, W * zz, H * zz); X.globalAlpha = 1; }
+    else if (im) X.drawImage(im, W / 2 - W * zz / 2, H / 2 - H * zz / 2, W * zz, H * zz); else { X.fillStyle = '#6b4a2e'; X.fillRect(0, 0, W, H); txt(life.dir, 960, 540, font(700, 60), '#fff', 'center'); }
+    X.filter = 'none'; X.setTransform(1, 0, 0, 1, 0, 0);
+    // Kino-Look wie die Lifestyle-Fotos des Originals: warmer Stich, weiche Vignette
+    X.save(); X.globalCompositeOperation = 'soft-light'; X.fillStyle = life.dir === 'f' ? 'rgba(255,150,60,0.25)' : 'rgba(255,170,80,0.35)'; X.fillRect(0, 0, W, H); X.restore();
+    const vg = X.createRadialGradient(W / 2, H / 2, H * 0.4, W / 2, H / 2, H * 1.05); vg.addColorStop(0, 'rgba(20,8,0,0)'); vg.addColorStop(1, 'rgba(20,8,0,0.7)');
+    X.fillStyle = vg; X.fillRect(0, 0, W, H);
+    if (life.dir === 'h') {   // Glanzlichter „glänzt“
+      for (let i = 0; i < 9; i++) {
+        const tt = t - (K.glaenzt - 0.1 + i * 0.08); if (tt < 0 || tt > 0.6) continue;
+        const k = Math.sin(Math.PI * tt / 0.6), x = [520, 820, 1130, 1390, 700, 960, 1240, 610, 1480][i], y = [560, 600, 575, 590, 640, 520, 610, 700, 540][i], r = 40 * k;
+        X.save(); X.globalCompositeOperation = 'lighter'; X.translate(x, y); X.rotate(tt * 1.5);
+        const gg = X.createRadialGradient(0, 0, 0, 0, 0, r); gg.addColorStop(0, `rgba(255,250,235,${0.9 * k})`); gg.addColorStop(1, 'rgba(255,240,200,0)');
+        X.fillStyle = gg; X.fillRect(-r, -r, 2 * r, 2 * r);
+        X.fillStyle = `rgba(255,252,240,${0.8 * k})`; X.fillRect(-r * 1.6, -1.5, r * 3.2, 3); X.fillRect(-1.5, -r * 1.6, 3, r * 3.2); X.restore();
+      }
+    }
+  } else {
+    // langsamer Push-in je Einstellung (Kamera nähert sich dem Beweis) – hält das Bild in Bewegung
+    const Q = K.cut, SC = [[0, Q.b1], [Q.am, Q.choose], [Q.choose, Q.office], [Q.office, Q.f], [Q.pm, Q.h], [Q.ende, DUR]].find(([a, b]) => t >= a && t < b);
+    if (SC) { const k = (t - SC[0]) / (SC[1] - SC[0]), z = 1 + 0.06 * k, cx = [Q.am, Q.office, Q.pm].includes(SC[0]) ? 1100 : 960; X.setTransform(z, 0, 0, z, cx - cx * z, 540 - 540 * z); }
+    if (SC && SC[0] === Q.pm) { const p = lerp(1, 1.22, eio((t - (K.haekchen - 0.4)) / 0.4)), cx = 930, cy = 430;   // Häkchen + Foto lesbar machen
+      X.transform(p, 0, 0, p, cx - cx * p, cy - cy * p); }
+  }
+  if (life) {
+  } else if (t < K.cut.b1) {                 // Headline-Karte wie im Original: als Ganzes, fertig auf „Montag“
+    headline(['Montag,', '8 Uhr.'], [K.montag, K.montag], 140, 600, 185, C.ink, 'left', K.cut.b1 - 0.25);
+  } else if (t < K.cut.choose) {             // Sperrbildschirm am Morgen: der Termin fällt ein
+    const k = (t - K.cut.am) / 0.6;
+    circle(760, 540, 430, (t - K.cut.am) / 0.65);
+    phone(760, 540 + (1 - e5(k)) * 900, 1, (sw, sh) => lock(sw, sh, 'Montag, 14. Oktober', t < K.neun + 0.35 ? '8:03' : '8:04', NOTES_AM));
+    bigNumber(1190, 610, 'Wichtigster Kunde', '9:00', '', 4, clamp((t - (K.wichtig - 0.1)) / (K.kunde + 0.1 - K.wichtig)) * 4, K.neun, C.yel, K.wichtig);
+  } else if (t < K.cut.office) {             // App: Reinigung wählen (Telefon mittig)
+    const k = (t - K.cut.choose) / 0.6;
+    circle(960, 540, 430, k);
+    const slide = eio((t - (K.flaeche - 0.55)) / 0.4);
+    const path = [[K.cut.choose, 330, 900], [K.buchen, 250, 360], [K.reinigung, 250, 367], [K.reinigung + 0.07, 260, 380], [K.minute - 0.15, 230, 860], [K.app - 0.23, 210, 868]];
+    phone(960, 540 + (1 - e5(k)) * 900, 1, (sw, sh) => {
+      X.save(); X.translate(-slide * sw, 0); screenChoose(sw, sh); X.translate(sw, 0); screenOffice(sw, sh); X.restore();
+      const [cx, cy] = cursorAt(path); cursor(cx, cy, pressAt([K.reinigung, K.app - 0.28]));
+    });
+  } else if (t < K.cut.f) {                  // App: Fläche, Rhythmus, Festpreis – Zahl rechts
+    const mv = eio((t - K.cut.office) / 0.5);
+    circle(lerp(960, 760, mv), 540, 430, 1);
+    const path = [[K.cut.office, 210, 868], [K.flaeche - 0.25, 200, 338], [K.rhythmus - 0.1, 220, 380], [K.waehlen - 0.05, 210, 462], [K.waehlen + 0.45, 300, 600], [K.sofort - 0.35, 220, 865], [K.cut.f, 225, 870]];
+    phone(lerp(960, 760, mv), 540, 1, (sw, sh) => {
+      if (t < K.sofort + 0.47) screenOffice(sw, sh); else screenDone(sw, sh);
+      const [cx, cy] = cursorAt(path); if (t < K.sofort + 0.57) cursor(cx, cy, pressAt([K.flaeche - 0.2, K.waehlen, K.sofort - 0.05]));
+    });
+    bigNumber(1190, 610, 'Festpreis', '289 €', '', 4, [K.flaeche, K.waehlen, K.festpreis, K.sofort].filter(x => t >= x).length, K.festpreis);
+  } else if (t < K.cut.h) {                  // Abends: jeder Raum als Häkchen mit Foto
+    const k = (t - K.cut.pm) / 0.6;
+    circle(760, 540, 430, k);
+    phone(760, 540 + (1 - e5(k)) * 900, 1, (sw, sh) => lock(sw, sh, 'Montag, 14. Oktober', t < K.haekchen - 0.37 ? '20:14' : '20:52', NOTES_PM));
+    const n = PINGS.filter(p => t >= p).length;
+    bigNumber(1190, 610, 'Räume fertig', `${Math.max(1, n)}/6`, '', 6, n, PINGS[0]);
+  } else {                                    // Endkarte in Vollgelb
+    X.fillStyle = C.yel; X.fillRect(0, 0, W, H);
+    const lk = clamp((t - (K.ende - 0.75)) / 0.42);
+    logoMark(500, 400, 200, C.ink, lk);
+    const wk = eio((t - (K.ende - 0.4)) / 0.4);   // Wortmarke fertig auf „Klarwerk“
+    X.save(); X.beginPath(); X.rect(740, 380, 900 * wk, 260); X.clip();
+    txt('KLARWERK', 740 - (1 - wk) * 80, 560, font(500, 170, 'F'), C.ink); X.restore();
+    headline(['Reinigung'], [K.reinigung2], 752, 660, 64, C.ink);
+    headline(['Erstreinigung', 'geschenkt.'], [K.erste, K.schenken], 960, 860, 108, C.ink, 'center');   // Angebot in 2 Wörtern, je auf seinem Wort
+    const ck = eo((t - (K.schenken + 0.55)) / 0.4);
+    X.save(); X.globalAlpha = ck; txt('klarwerk-reinigung.de · 0711 204 88 30', 960, 955, font(500, 34), C.ink, 'center'); X.restore();
+  }
+  X.setTransform(1, 0, 0, 1, 0, 0);
+  const fade = Math.max(1 - clamp(t / 0.12), clamp((t - (DUR - 0.5)) / 0.45));
+  if (fade > 0) { X.fillStyle = `rgba(20,10,2,${fade})`; X.fillRect(0, 0, W, H); }
+}
+const ready = (async () => {
+  for (const [n, f, wgt] of [['Familjen', 'FamiljenM.ttf', '500'], ['Familjen', 'FamiljenB.ttf', '700'], ['DMSans', 'DMSansM.ttf', '500'], ['DMSans', 'DMSansB.ttf', '700'], ['DMSans', 'DMSansB.ttf', '600']]) {
+    const ff = new FontFace(n, `url(${f})`, { weight: wgt }); await ff.load(); document.fonts.add(ff);
+  }
+  for (let i = 0; i < 6; i++) { const im = new Image(); im.src = `frames/thumb_${i}.jpg`; try { await im.decode(); thumbs[i] = im; } catch (e) { thumbs[i] = null; } }
+  await seek(0);
+})();
+window.FILM = { duration: DUR, width: W, height: H, ready, seek };
+</script>
+</body>
+</html>

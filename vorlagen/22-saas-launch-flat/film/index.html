@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Pflegebrücke – V7 Launch</title>
+<style>
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Pflegebrücke Personal – V7 im Stil des Notion-Launch-Videos (siehe ../STILBIBEL.md, Text und Timing: ../REGIE.md).
+// Alle Zeiten sind Abstände zu den gemessenen Wortzeiten K und Schnitten CUT (zeiten.js), keine festen Sekunden.
+const W = 1920, H = 1080;
+const C = { bg: '#f4f5eb', ink: '#161611', blue: '#0b74de', blueL: '#3d8ff0', dk0: '#1f1f1c', dk1: '#141412', grey: '#9a9d9a', grey2: '#6b6c67', line: '#e6e6e1',
+  win: '#ffffff', face: '#d4d5d1', red: '#de5951', gold: '#ddbd62', green: '#4fa777', peach: '#fcf0d8', stat: '#e9efec',
+  tg: ['#dcefe3', '#2f7a4f'], tr: ['#f9dcdc', '#c4443c'], tb: ['#dbe9f7', '#1f6fb5'], ty: ['#f5e6c0', '#8a6a1c'], tx: ['#ecece8', '#6b6b66'] };
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const p3 = x => 1 - Math.pow(1 - clamp(x), 3), eio = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const back = x => { x = clamp(x); const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+function hsh(n) { n = Math.imul((n | 0) ^ 0x9E3779B9, 0x85EBCA6B); n ^= n >>> 13; n = Math.imul(n, 0xC2B2AE35); n ^= n >>> 16; return (n >>> 0) / 4294967296; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+const F = (w, s) => `${w} ${s}px IN`, M = s => `500 ${s}px JB`;
+let T = 0;
+
+// ---------- Typografie: Wort für Wort aus der Unschärfe ----------
+function wordsLine(g, t, x, y, size, parts, o = {}) { // parts: [text, t0, blue?]
+  g.save(); g.font = F(o.w || 700, size); g.letterSpacing = `${-size * .035}px`; g.textBaseline = 'alphabetic';
+  const sp = size * .26; let tot = 0; const ws = parts.map(p => { const w = g.measureText(p[0]).width; tot += w; return w; }); tot += sp * (parts.length - 1);
+  let xx = o.align === 'center' ? x - tot / 2 : x;
+  parts.forEach((p, i) => { const k = p3((t - p[1]) / (o.dur || .42)); if (k > 0) { g.save(); g.globalAlpha = k * (o.alpha ?? 1); const b = (1 - k) * 14; if (b > .3) g.filter = `blur(${b}px)`;
+      g.fillStyle = p[2] ? (o.dark ? C.blueL : C.blue) : (o.col || (o.dark ? '#f5f5f0' : C.ink)); if (p[3]) p[3](g, xx, y, ws[i], size, k); g.fillText(p[0], xx, y + (1 - k) * 26); g.restore(); }
+    xx += ws[i] + sp; });
+  g.restore(); return tot; }
+const LD = .25; // Einblendung einer Headline-Zeile: 0,25 s aus der Unschärfe, fertig am Wortanfang
+function line(g, t, x, y, size, spec, tw0, o = {}) { return wordsLine(g, t, x, y, size, spec.map(([s, b]) => [s, tw0 - LD, b]), { ...o, dur: LD }); }
+function txt(g, s, x, y, font, col, o = {}) { g.save(); g.font = font; g.fillStyle = col; g.textAlign = o.align || 'left'; g.textBaseline = o.base || 'alphabetic'; if (o.ls) g.letterSpacing = o.ls; g.fillText(s, x, y); const w = g.measureText(s).width; g.restore(); return w; }
+function tw(g, s, font) { g.save(); g.font = font; const w = g.measureText(s).width; g.restore(); return w; }
+
+// ---------- Notion-Figuren: schwarze Tuschelinien, graue Gesichter, Rasterschatten ----------
+function face(g, x, y, s, kind = 'pdl', o = {}) { g.save(); g.translate(x, y); g.scale(s, s); const inkC = o.white ? '#f5f5f0' : '#111';
+  g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = inkC; g.lineWidth = 5;
+  const fill = o.white ? 'rgba(0,0,0,0)' : C.face;
+  // Hals und Schultern
+  g.beginPath(); g.moveTo(-20, 52); g.lineTo(-22, 88); g.moveTo(20, 52); g.lineTo(22, 88); g.stroke();
+  g.beginPath(); g.moveTo(-95, 150); g.bezierCurveTo(-90, 100, -60, 88, -22, 86); g.lineTo(22, 86); g.bezierCurveTo(60, 88, 90, 100, 95, 150); g.fillStyle = o.white ? 'rgba(0,0,0,0)' : (o.shirt || '#fff'); g.fill(); g.stroke();
+  if (kind === 'nurse') { g.beginPath(); g.moveTo(-22, 86); g.lineTo(0, 118); g.lineTo(22, 86); g.stroke(); }
+  // Kopf
+  g.beginPath(); g.ellipse(0, 0, 50, 60, 0, 0, 7); g.fillStyle = fill; g.fill();
+  if (!o.white) { g.save(); g.clip(); g.fillStyle = 'rgba(40,40,40,.28)'; for (let yy = -60; yy < 60; yy += 7) for (let xx = 8; xx < 52; xx += 7) { const r = 1.2 + (xx - 8) / 44 * 1.6; g.beginPath(); g.arc(xx + (yy / 7 % 2) * 3.5, yy, r, 0, 7); g.fill(); } g.restore(); }
+  g.beginPath(); g.ellipse(0, 0, 50, 60, 0, 0, 7); g.stroke();
+  g.beginPath(); g.arc(-50, 6, 9, 1.8, 4.6); g.stroke(); g.beginPath(); g.arc(50, 6, 9, -1.4, 1.4); g.stroke();
+  // Haare
+  g.fillStyle = inkC;
+  if (kind === 'pdl') { g.beginPath(); g.arc(4, -70, 22, 0, 7); g.fill(); g.beginPath(); g.moveTo(-54, 14); g.bezierCurveTo(-62, -40, -36, -70, 2, -66); g.bezierCurveTo(40, -66, 60, -38, 54, 12); g.bezierCurveTo(46, -18, 30, -34, 6, -38); g.bezierCurveTo(-18, -30, -40, -18, -54, 14); g.fill();
+    g.beginPath(); g.moveTo(-18, -40); g.bezierCurveTo(-8, -28, 10, -24, 26, -30); g.strokeStyle = o.white ? '#1f1f1c' : '#666'; g.lineWidth = 2.5; g.stroke(); g.strokeStyle = inkC; g.lineWidth = 5; }
+  else if (kind === 'nurse') { g.beginPath(); g.moveTo(-54, 6); g.bezierCurveTo(-58, -46, -30, -66, 6, -64); g.bezierCurveTo(44, -62, 58, -36, 52, 4); g.bezierCurveTo(40, -24, 14, -30, -10, -30); g.bezierCurveTo(-30, -28, -46, -16, -54, 6); g.fill();
+    g.beginPath(); g.moveTo(-40, -52); g.lineTo(-30, -84); g.lineTo(30, -84); g.lineTo(40, -52); g.closePath(); g.fillStyle = o.white ? 'rgba(0,0,0,0)' : '#fff'; g.fill(); g.stroke(); g.fillStyle = C.blue; g.fillRect(-4, -80, 8, 22); g.fillRect(-11, -73, 22, 8); g.fillStyle = inkC; }
+  else { g.beginPath(); g.moveTo(-54, 0); g.bezierCurveTo(-64, -58, -20, -80, 20, -70); g.bezierCurveTo(56, -62, 64, -30, 54, -2); g.bezierCurveTo(40, -40, 10, -46, -20, -38); g.bezierCurveTo(-40, -30, -50, -16, -54, 0); g.fill(); }
+  // Gesicht
+  const mood = o.mood || 'neutral';
+  g.lineWidth = 4.5; g.beginPath(); g.moveTo(-32, -18); g.quadraticCurveTo(-22, mood === 'tired' ? -16 : -24, -10, -18); g.moveTo(10, -18); g.quadraticCurveTo(22, mood === 'tired' ? -16 : -24, 32, -18); g.stroke();
+  if (mood === 'tired') { g.beginPath(); g.moveTo(-30, -2); g.quadraticCurveTo(-21, 3, -12, -2); g.moveTo(12, -2); g.quadraticCurveTo(21, 3, 30, -2); g.stroke(); g.lineWidth = 2.5; g.beginPath(); g.arc(-21, 8, 8, .3, 2.8); g.arc(21, 8, 8, .3, 2.8); g.stroke(); }
+  else if (mood === 'happy') { g.beginPath(); g.moveTo(-30, 0); g.quadraticCurveTo(-21, -8, -12, 0); g.moveTo(12, 0); g.quadraticCurveTo(21, -8, 30, 0); g.stroke(); }
+  else { g.beginPath(); g.ellipse(-21, -2, 4.5, 6, 0, 0, 7); g.ellipse(21, -2, 4.5, 6, 0, 0, 7); g.fill(); }
+  if (o.glasses) { g.lineWidth = 3.5; g.beginPath(); g.arc(-21, -1, 14, 0, 7); g.moveTo(35, -1); g.arc(21, -1, 14, 0, 7); g.moveTo(-7, -3); g.lineTo(7, -3); g.stroke(); }
+  g.lineWidth = 4; g.beginPath(); g.moveTo(3, 2); g.quadraticCurveTo(-6, 20, 2, 24); g.stroke();
+  g.beginPath(); if (mood === 'tired') { g.moveTo(-12, 40); g.quadraticCurveTo(0, 36, 12, 40); } else if (mood === 'happy') { g.moveTo(-16, 34); g.quadraticCurveTo(0, 50, 16, 34); } else { g.moveTo(-10, 38); g.quadraticCurveTo(0, 43, 10, 38); } g.stroke();
+  g.restore(); }
+function avatar(g, x, y, r, kind, o = {}) { g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = o.bg || '#fff'; g.fill(); g.clip(); face(g, x, y + r * .12, r / 78, kind, o); g.restore();
+  g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.lineWidth = o.ring ? r * .09 : 1.5; g.strokeStyle = o.ring || C.line; g.stroke(); g.restore(); }
+function badge(g, x, y, r, bg, icon, k = 1) { if (k <= 0) return; g.save(); g.translate(x, y); g.scale(k, k); g.beginPath(); g.arc(0, 0, r, 0, 7); g.fillStyle = bg; g.fill(); g.lineWidth = 3; g.strokeStyle = '#111'; g.stroke();
+  g.strokeStyle = bg === '#fff' ? '#111' : '#fff'; g.fillStyle = g.strokeStyle; g.lineWidth = r * .14; g.lineCap = 'round'; g.lineJoin = 'round'; icon(g, r); g.restore(); }
+const IC = {
+  check: (g, r) => { g.beginPath(); g.moveTo(-r * .4, 0); g.lineTo(-r * .1, r * .3); g.lineTo(r * .42, -r * .32); g.stroke(); },
+  moon: (g, r) => { g.beginPath(); g.arc(0, 0, r * .45, .7, 5.6); g.arc(r * .22, -r * .1, r * .35, 5.1, 1.3, true); g.fill(); },
+  sun: (g, r) => { g.beginPath(); g.arc(0, 0, r * .25, 0, 7); g.fill(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; g.beginPath(); g.moveTo(Math.cos(a) * r * .38, Math.sin(a) * r * .38); g.lineTo(Math.cos(a) * r * .55, Math.sin(a) * r * .55); g.stroke(); } },
+  cup: (g, r) => { g.beginPath(); g.moveTo(-r * .35, -r * .2); g.lineTo(-r * .28, r * .35); g.lineTo(r * .22, r * .35); g.lineTo(r * .28, -r * .2); g.closePath(); g.stroke(); g.beginPath(); g.arc(r * .36, r * .05, r * .14, -1.4, 1.4); g.stroke(); },
+  heart: (g, r) => { g.beginPath(); g.moveTo(0, r * .38); g.bezierCurveTo(-r * .6, -r * .05, -r * .3, -r * .5, 0, -r * .18); g.bezierCurveTo(r * .3, -r * .5, r * .6, -r * .05, 0, r * .38); g.fill(); },
+  phone: (g, r) => { g.beginPath(); g.moveTo(-r * .35, -r * .32); g.quadraticCurveTo(-r * .4, r * .3, r * .32, r * .38); g.stroke(); g.fillRect(-r * .46, -r * .44, r * .2, r * .22); g.fillRect(r * .22, r * .26, r * .22, r * .2); },
+  cross: (g, r) => { g.fillRect(-r * .1, -r * .38, r * .2, r * .76); g.fillRect(-r * .38, -r * .1, r * .76, r * .2); } };
+
+// ---------- UI-Bausteine im Notion-Stil ----------
+function winShadow(g, x, y, w, h, r = 14) { g.save(); rr(g, x, y, w, h, r); g.shadowColor = 'rgba(40,40,30,.10)'; g.shadowBlur = 70; g.shadowOffsetY = 26; g.fillStyle = C.win; g.fill();
+  g.shadowColor = 'rgba(40,40,30,.06)'; g.shadowBlur = 8; g.shadowOffsetY = 2; g.fill(); g.restore(); g.save(); rr(g, x + .5, y + .5, w - 1, h - 1, r); g.strokeStyle = C.line; g.lineWidth = 1.5; g.stroke(); g.restore(); }
+function win(g, x, y, w, h, o = {}) { winShadow(g, x, y, w, h); if (o.peach) { g.save(); rr(g, x, y, w, h, 14); g.clip(); g.fillStyle = C.peach; g.fillRect(x, y + 38, w, o.peach); g.restore(); }
+  for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(x + 22 + i * 18, y + 20, 5.5, 0, 7); g.fillStyle = '#e2e2dd'; g.fill(); }
+  if (o.crumb) txt(g, o.crumb, x + 90, y + 26, F(500, 17), C.grey); }
+function tag(g, x, y, s, col, size = 19) { g.save(); g.font = F(500, size); const w = g.measureText(s).width + size * .9; rr(g, x, y - size * .95, w, size * 1.4, 6); g.fillStyle = col[0]; g.fill(); g.fillStyle = col[1]; g.fillText(s, x + size * .45, y); g.restore(); return w; }
+function pill(g, x, y, s, o = {}) { const size = o.size || 26, f = F(o.w || 600, size); const w = tw(g, s, f) + size * 1.9 + (o.dot ? size * .6 : 0), h = size * 1.9;
+  const X0 = o.align === 'center' ? x - w / 2 : x; g.save(); rr(g, X0, y - h / 2, w, h, h / 2); g.shadowColor = 'rgba(40,40,30,.10)'; g.shadowBlur = 24; g.shadowOffsetY = 8; g.fillStyle = o.bg || '#fff'; g.fill(); g.restore();
+  g.save(); rr(g, X0 + .5, y - h / 2 + .5, w - 1, h - 1, h / 2); g.strokeStyle = o.border || C.line; g.lineWidth = 1.5; g.stroke(); g.restore();
+  let xx = X0 + size * .95; if (o.dot) { g.beginPath(); g.arc(xx + size * .2, y, size * .2, 0, 7); g.fillStyle = C.blue; g.fill(); xx += size * .6; }
+  txt(g, s, xx, y + size * .36, f, o.col || C.ink); return w; }
+function tile(g, x, y, s, rot, draw, k = 1) { if (k <= 0) return; g.save(); g.translate(x, y); g.rotate(rot); g.scale(s * k, s * k);
+  rr(g, -75, -75, 150, 150, 30); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 40; g.shadowOffsetY = 18; g.fillStyle = '#f7f7f2'; g.fill(); g.shadowColor = 'transparent'; draw(g); g.restore(); }
+// Glyphen in den App-Kacheln
+const GL = {
+  sick: g => { rr(g, -34, -46, 68, 92, 8); g.fillStyle = '#fff'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#cfcfca'; g.stroke(); g.fillStyle = C.red; g.fillRect(-7, -32, 14, 36); g.fillRect(-18, -21, 36, 14); g.fillStyle = '#d8d8d2'; g.fillRect(-22, 16, 44, 5); g.fillRect(-22, 28, 30, 5); },
+  phone: g => { g.fillStyle = '#34a853'; rr(g, -40, -40, 80, 80, 20); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(-14, -18); g.quadraticCurveTo(-18, 16, 16, 18); g.stroke();
+    g.beginPath(); g.arc(40, -40, 17, 0, 7); g.fillStyle = C.red; g.fill(); txt(g, '3', 40, -33, F(700, 20), '#fff', { align: 'center' }); },
+  chat: g => { g.fillStyle = '#e6e6e0'; rr(g, -44, -34, 70, 42, 16); g.fill(); g.fillStyle = C.blue; rr(g, -18, 0, 64, 40, 16); g.fill(); g.fillStyle = '#fff'; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(-2 + i * 16, 20, 4, 0, 7); g.fill(); } },
+  cal: g => { g.fillStyle = '#fff'; rr(g, -44, -40, 88, 84, 10); g.fill(); g.lineWidth = 3; g.strokeStyle = '#d6d6d0'; g.stroke(); g.fillStyle = C.red; g.fillRect(-44, -40, 88, 18);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) { const gap = (r * 4 + c) % 5 === 2; g.fillStyle = gap ? C.red : '#e3e3de'; g.fillRect(-34 + c * 18, -12 + r * 16, 12, 10); } },
+  gap: g => { g.setLineDash([10, 7]); g.lineWidth = 5; g.strokeStyle = C.red; rr(g, -40, -40, 80, 80, 14); g.stroke(); g.setLineDash([]); txt(g, '?', 0, 16, F(700, 46), C.red, { align: 'center' }); } };
+function logoMark(g, x, y, s) { g.save(); g.translate(x, y); g.scale(s, s); g.lineJoin = 'round'; g.lineCap = 'round';
+  g.fillStyle = '#111'; rr(g, -46, -40, 100, 96, 14); g.fill(); g.fillStyle = '#fff'; g.strokeStyle = '#111'; g.lineWidth = 7; rr(g, -54, -52, 100, 96, 14); g.fill(); g.stroke();
+  g.lineWidth = 8; g.beginPath(); g.moveTo(-38, 22); g.lineTo(30, 22); g.stroke(); g.beginPath(); g.moveTo(-34, 22); g.quadraticCurveTo(-4, -34, 26, 22); g.stroke();
+  g.lineWidth = 5; for (const xx of [-20, -4, 12]) { const yy = 22 - 36 * (1 - Math.pow((xx + 4) / 30, 2)) * .9; g.beginPath(); g.moveTo(xx, 22); g.lineTo(xx, yy + 6); g.stroke(); }
+  g.fillStyle = C.blue; g.fillRect(-8, -40, 8, 22); g.fillRect(-15, -33, 22, 8); g.restore(); }
+function cursor(g, x, y, press = 0) { g.save(); g.translate(x, y); const s = 1.5 * (1 - press * .12); g.scale(s, s); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 30); g.lineTo(8, 23); g.lineTo(13, 34); g.lineTo(18, 32); g.lineTo(13, 21); g.lineTo(23, 21); g.closePath();
+  g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 8; g.shadowOffsetY = 3; g.fillStyle = '#111'; g.fill(); g.shadowColor = 'transparent'; g.lineWidth = 2.5; g.strokeStyle = '#fff'; g.stroke(); g.restore(); }
+
+// ---------- 3D-Kippen (rotateX) über Streifen ----------
+const OFF = mk(1600, 1000), OG = OFF.getContext('2d');
+function tilted(g, drawFn, w, h, x, y, k, alpha = 1) { // k: 1 = stark gekippt, 0 = aufrecht
+  if (k <= .002) { g.save(); g.globalAlpha *= alpha; g.translate(x, y); drawFn(g); g.restore(); return; }
+  OG.setTransform(1, 0, 0, 1, 0, 0); OG.clearRect(0, 0, OFF.width, OFF.height); OG.save(); OG.translate(60, 60); drawFn(OG); OG.restore();
+  const N = 60, TH = h + 120, TW = w + 120, sy = 1 - .35 * k; g.save(); g.globalAlpha *= alpha;
+  for (let i = 0; i < N; i++) { const y0 = i * TH / N, u = i / N, sc = 1 - .22 * k * (1 - u), dw = TW * sc, yy = y - 60 + (h + 120) * (1 - sy) + y0 * sy;
+    g.drawImage(OFF, 0, y0, TW, TH / N + 1, x - 60 + (TW - dw) / 2, yy, dw, TH / N * sy + 1); }
+  g.restore(); }
+
+// ---------- Hintergründe ----------
+function bgDark(g) { const gr = g.createRadialGradient(960, 520, 80, 960, 540, 1100); gr.addColorStop(0, C.dk0); gr.addColorStop(1, C.dk1); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  const b = g.createRadialGradient(200, 1080, 0, 200, 1080, 700); b.addColorStop(0, 'rgba(18,40,60,.16)'); b.addColorStop(1, 'rgba(18,40,60,0)'); g.fillStyle = b; g.fillRect(0, 0, W, H); }
+function bgLight(g) { g.fillStyle = C.bg; g.fillRect(0, 0, W, H); const gr = g.createRadialGradient(960, 480, 300, 960, 540, 1250); gr.addColorStop(0, 'rgba(255,255,250,.35)'); gr.addColorStop(1, 'rgba(210,212,196,.28)'); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+
+// ---------- Dienstplan-Tabelle (dunkel eingeleitet, hell aufgelöst) ----------
+const STAFF = [['Petra W.', 'Pflegefachkraft', 'nurse'], ['Jana K.', 'Pflegefachkraft', 'pdl'], ['Tim R.', 'Pflegehelfer', 'man'], ['Emre D.', 'Pflegefachkraft', 'man'], ['Lea B.', 'Pflegehelferin', 'pdl']];
+function roster(g, t, w, h, st) { // st(i) -> {state:'ok'|'sick'|'open'|'filled', k}
+  win(g, 0, 0, w, h, { crumb: 'Dienstplan  /  Wohnbereich 2' });
+  badge(g, 64, 110, 30, '#fff', IC.moon); txt(g, 'Samstag · Nachtdienst', 110, 124, F(700, 40), C.ink, { ls: '-1px' }); txt(g, '22:00 – 06:00  ·  Wohnbereich 2', 110, 162, F(500, 21), C.grey);
+  const open = STAFF.filter((_, i) => { const s = st(i).state; return s === 'sick' || s === 'open'; }).length; const filledAll = STAFF.every((_, i) => ['ok', 'filled'].includes(st(i).state));
+  const hb = open ? `${open} offen` : filledAll && STAFF.some((_, i) => st(i).state === 'filled') ? 'Alle besetzt' : '5 / 5 besetzt'; const hbW = tw(g, hb, F(500, 20)) + 18; tag(g, w - 40 - hbW, 124, hb, open ? C.tr : C.tg, 20);
+  g.fillStyle = C.line; g.fillRect(40, 196, w - 80, 1.5); txt(g, 'Name', 110, 228, F(500, 18), C.grey); txt(g, 'Rolle', w * .45, 228, F(500, 18), C.grey); txt(g, 'Status', w * .72, 228, F(500, 18), C.grey);
+  STAFF.forEach(([n, r, kind], i) => { const y = 250 + i * 72, s = st(i);
+    if (s.state === 'sick' || s.state === 'open') { g.save(); g.globalAlpha = s.k ?? 1; rr(g, 30, y, w - 60, 64, 10); g.fillStyle = 'rgba(222,89,81,.08)'; g.fill(); g.restore(); }
+    if (s.state === 'filled') { g.save(); g.globalAlpha = s.k ?? 1; rr(g, 30, y, w - 60, 64, 10); g.fillStyle = 'rgba(11,116,222,.07)'; g.fill(); g.restore(); }
+    const yc = y + 32;
+    if (s.state === 'open') { g.save(); g.setLineDash([6, 5]); g.lineWidth = 2; g.strokeStyle = C.red; g.beginPath(); g.arc(70, yc, 22, 0, 7); g.stroke(); g.restore(); txt(g, 'Offen', 110, yc + 8, F(600, 23), C.red); txt(g, 'fällt aus', w * .45, yc + 8, F(500, 21), C.grey); }
+    else if (s.state === 'filled') { const k = back(s.k ?? 1); g.save(); g.translate(70, yc); g.scale(k, k); avatar(g, 0, 0, 22, s.kind || 'nurse', { ring: C.blue }); g.restore(); txt(g, s.name, 110, yc + 8, F(600, 23), C.ink); txt(g, 'über Pflegebrücke', w * .45, yc + 8, F(500, 21), C.blue); }
+    else { avatar(g, 70, yc, 22, kind); txt(g, n, 110, yc + 8, F(600, 23), C.ink); txt(g, r, w * .45, yc + 8, F(500, 21), C.grey); }
+    const tg = s.state === 'sick' ? ['Krank', C.tr] : s.state === 'open' ? ['Offen', C.tr] : s.state === 'filled' ? ['Besetzt', C.tb] : ['Bestätigt', C.tg]; tag(g, w * .72, yc + 7, tg[0], tg[1], 20);
+    if (i < STAFF.length - 1) { g.fillStyle = '#f0f0ec'; g.fillRect(40, y + 68, w - 80, 1.5); } }); }
+
+// ---------- Szenen ----------
+function sA(g, t) { bgDark(g);
+  line(g, t, 150, 420, 118, [['Samstag,']], K.sams, { dark: true }); line(g, t, 150, 544, 118, [['Nachtdienst.']], K.sams, { dark: true });
+  line(g, t, 150, 668, 118, [['Zwei'], ['fallen', 1], ['aus.', 1]], K.zwei1, { dark: true });
+  const k = p3(lin(t, K.sams - .2, K.sams + .3));
+  // Zeile 2 wird auf „Zwei“ krank, Zeile 4 auf „Pflegekräfte“, beide sind auf „fallen“ offen
+  tilted(g, gg => { gg.scale(1.12, 1.12); roster(gg, t, 760, 640, i => i === 1 ? { state: t < K.zwei1 - .2 ? 'ok' : t < K.fallen - .15 ? 'sick' : 'open', k: lin(t, K.zwei1 - .2, K.zwei1) } : i === 3 ? { state: t < K.pflege - .2 ? 'ok' : t < K.fallen - .15 ? 'sick' : 'open', k: lin(t, K.pflege - .2, K.pflege) } : { state: 'ok' }); },
+    851, 717, 990, 190 + (1 - k) * 260 - 12 * lin(t, K.sams + .3, CUT.B), (1 - k), k); }
+function sB(g, t) { bgDark(g);
+  const col = lin(t, CUT.C - .6, CUT.C - .04), ce = eio(col); // Zusammenziehen in einen Lichtpunkt
+  g.save(); if (ce > 0) { g.translate(960, 540); g.scale(1 - ce * .96, 1 - ce * .96); g.translate(-960, -540); g.filter = `blur(${ce * 10}px)`; }
+  line(g, t, 150, 420, 118, [['Krankmeldung'], ['hier.']], K.krank, { dark: true });
+  line(g, t, 150, 544, 118, [['Anrufe'], ['da.']], K.anrufe, { dark: true });
+  line(g, t, 150, 668, 118, [['Lücken'], ['überall.', 1]], K.luecken, { dark: true });
+  const buzz = (a) => t > a && t < a + .5 ? Math.sin((t - a) * 90) * 5 : 0, dr = t * 6;
+  tile(g, 1440, 250 - dr, 1, -.08, GL.sick, back(lin(t, K.krank - .3, K.krank)));
+  tile(g, 1650 + buzz(K.anrufe) + buzz(K.anrufe + .7), 470 - dr * .6, 1, .1, GL.phone, back(lin(t, K.anrufe - .3, K.anrufe)));
+  tile(g, 1330, 690 - dr * .8, .92, .06, GL.chat, back(lin(t, K.da - .3, K.da)));
+  tile(g, 1600, 880 - dr * .5, 1, -.12, GL.cal, back(lin(t, K.luecken - .3, K.luecken)));
+  const sm = [[1190, 330], [1780, 250], [1200, 900], [1790, 690], [1480, 560], [1020, 620], [1350, 120], [1720, 1010]];
+  sm.forEach(([x, y], j) => tile(g, x, y - dr, .5, (j % 3 - 1) * .15, GL.gap, back(lin(t, K.ueberall - .14 + j * .06, K.ueberall + .12 + j * .06))));
+  g.restore();
+  if (col > 0) { const a = Math.sin(col * Math.PI) * .9; const gr = g.createRadialGradient(960, 540, 0, 960, 540, 60 + 80 * (1 - col)); gr.addColorStop(0, `rgba(210,230,255,${a})`); gr.addColorStop(1, 'rgba(61,143,240,0)'); g.fillStyle = gr; g.fillRect(0, 0, W, H); } }
+function sC(g, t) { bgDark(g);
+  const sw = eio(lin(t, K.zum - .3, K.zum - .08)); // Zeilen werden per Maske von unten ersetzt, fertig auf „Zum“
+  g.save(); g.globalAlpha = 1; avatar(g, 190, 300, 44, 'pdl', { white: true, mood: 'tired', bg: 'rgba(255,255,255,.06)', ring: 'rgba(255,255,255,.25)' }); g.restore();
+  g.save(); g.beginPath(); g.rect(0, 360, W, 290); g.clip();
+  if (sw < 1) { g.save(); g.translate(0, -sw * 150); g.globalAlpha = 1 - sw; line(g, t, 150, 480, 110, [['Und'], ['wieder'], ['springen']], K.und1, { dark: true });
+    line(g, t, 150, 600, 110, [['Sie'], ['selbst', 1], ['ein.', 1]], K.und1, { dark: true }); g.restore(); }
+  if (sw > 0) { g.save(); g.translate(0, (1 - sw) * 150); wordsLine(g, t, 150, 480, 110, [['Zum', -9], ['dritten', -9], ['Mal', -9]], { dark: true });
+    wordsLine(g, t, 150, 600, 110, [['diesen', -9, 1], ['Monat.', -9, 1]], { dark: true }); g.restore(); }
+  g.restore();
+  // Leiste wie im Original (dünne Linie, Ticks, Zähler) – hier: die Samstage des Monats; dritte Markierung landet auf „dritten“
+  const bk = p3(lin(t, K.zum - .35, K.zum)); if (bk <= 0) return; g.save(); g.globalAlpha = bk;
+  const x0 = 150, x1 = 1320, y = 700, ticks = [K.dritten - .4, K.dritten - .2, K.dritten]; let n = 0; ticks.forEach(a => { if (t > a) n++; });
+  g.fillStyle = 'rgba(61,143,240,.22)'; g.fillRect(x0, y, x1 - x0, 3); g.fillStyle = C.blueL; g.fillRect(x0, y, (x1 - x0) * (n / 4), 3);
+  for (let i = 1; i < 4; i++) { g.fillStyle = 'rgba(61,143,240,.5)'; g.fillRect(x0 + (x1 - x0) * i / 4, y - 7, 2, 17); }
+  for (let i = 0; i < 4; i++) { const cx = x0 + (x1 - x0) * (i + .5) / 4, on = i < 3 && t > ticks[i] - .15, k = i < 3 ? back(lin(t, ticks[i] - .15, ticks[i])) : 0;
+    txt(g, `Sa ${[6, 13, 20, 27][i]}.`, cx, y + 52, F(600, 24), on ? '#f5f5f0' : 'rgba(245,245,240,.3)', { align: 'center' });
+    if (k > 0) { g.save(); g.translate(cx, y - 46); g.scale(k, k); avatar(g, 0, 0, 26, 'pdl', { white: true, mood: 'tired', bg: '#2a2a26', ring: C.blueL }); g.restore(); } }
+  txt(g, `0${n} / 04`, x1 + 30, y + 10, M(22), 'rgba(245,245,240,.55)', { ls: '2px' }); g.restore(); }
+function formWin(g, t, w, h) { win(g, 0, 0, w, h, { crumb: 'Pflegebrücke  /  Schicht melden' });
+  txt(g, 'Offene Schicht melden', 44, 116, F(700, 40), C.ink, { ls: '-1px' });
+  // V7: Felder springen gefüllt ein (Auswahl statt Tippen): Wann auf „melden“, Wer auf „Lücke“, Wo kurz vor „in“
+  const rows = [['Wann', 'Samstag, 22:00 – 06:00 Uhr', K.melden], ['Wer', '2 Pflegefachkräfte', K.luecke], ['Wo', 'Wohnbereich 2 · Altenpflege', K.in1 - .05]];
+  rows.forEach(([l, v, a], i) => { const y = 190 + i * 96; txt(g, l, 44, y + 14, F(500, 21), C.grey);
+    rr(g, 170, y - 22, w - 214, 58, 10); const act = t > a - .2 && t < a + .35; g.fillStyle = act ? '#fff' : '#f7f7f4'; g.fill(); g.lineWidth = act ? 2.5 : 1.5; g.strokeStyle = act ? C.blue : C.line; g.stroke();
+    const k = p3(lin(t, a - .15, a)); if (k > 0) { g.save(); g.globalAlpha = k; if (k < 1) g.filter = `blur(${(1 - k) * 6}px)`; txt(g, v, 192, y + 16 + (1 - k) * 8, F(500, 24), C.ink); g.restore(); if (t > a) badge(g, w - 74, y + 7, 12, C.blue, IC.check, back(lin(t, a, a + .2))); } });
+  const sent = t > K.minuten, press = t > K.minuten - .08 && t < K.minuten + .1 ? 1 : 0; const bx = w - 44 - 220, by = h - 96;
+  g.save(); g.translate(bx + 110, by + 30); g.scale(1 - press * .05, 1 - press * .05); rr(g, -110, -30, 220, 60, 30); g.fillStyle = C.blue; g.fill(); txt(g, sent ? 'Gesendet  ✓' : 'Senden', 0, 9, F(600, 24), '#fff', { align: 'center' }); g.restore(); }
+function sD(g, t) { bgLight(g); const drA = CUT.D + .3, drB = CUT.E;
+  const pk = p3(lin(t, K.pb1 - .25, K.pb1)); g.save(); g.globalAlpha = pk; pill(g, 150, 300 - (1 - pk) * 20, 'Pflegebrücke', { dot: true, size: 26 }); g.restore();
+  line(g, t, 150, 450, 110, [['Lücke'], ['melden.']], K.melden);
+  line(g, t, 150, 572, 110, [['In'], ['2', 1], ['Minuten.', 1]], K.in1);
+  const k = p3(lin(t, CUT.D, CUT.D + .45)); tilted(g, gg => formWin(gg, t, 780, 560), 780, 560, 1000, 330 + (1 - k) * 240 - 10 * lin(t, drA, drB), 1 - k, k);
+  // Stoppuhr-Pille wie die Aufnahme-Pille im Original: läuft ab „Mit“, steht auf „Minuten“ bei 1:47
+  const pk2 = p3(lin(t, K.mit - .1, K.mit + .2)); if (pk2 > 0) { g.save(); g.globalAlpha = pk2; const x = 940, y = 250 - 10 * lin(t, drA, drB), sec = Math.min(107, Math.floor(lin(t, K.mit, K.minuten) * 107));
+    rr(g, x, y - 38, 520, 76, 38); g.shadowColor = 'rgba(40,40,30,.14)'; g.shadowBlur = 30; g.shadowOffsetY = 10; g.fillStyle = '#fff'; g.fill(); g.shadowColor = 'transparent'; g.strokeStyle = C.line; g.lineWidth = 1.5; g.stroke();
+    txt(g, 'Schicht melden', x + 34, y + 9, F(500, 25), C.ink); for (let i = 0; i < 16; i++) { const hh = 6 + 16 * Math.abs(Math.sin(i * 1.7 + (t < K.minuten ? t * 9 : 0))); g.fillStyle = '#b8b8b2'; g.fillRect(x + 230 + i * 9, y - hh / 2, 3.5, hh); }
+    txt(g, `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`, x + 420, y + 9, F(600, 25), t > K.minuten ? C.blue : C.ink); g.beginPath(); g.arc(x + 488, y, 14, 0, 7); g.fillStyle = t > K.minuten ? C.tg[0] : '#fbe3e1'; g.fill();
+    if (t > K.minuten) { g.strokeStyle = C.green; g.lineWidth = 3.5; g.beginPath(); g.moveTo(x + 481, y); g.lineTo(x + 486, y + 5); g.lineTo(x + 495, y - 5); g.stroke(); } else { g.fillStyle = C.red; g.fillRect(x + 482, y - 6, 12, 12); } g.restore(); }
+  // Hinweis-Chip nach dem Senden
+  const ck = back(lin(t, K.minuten + .1, K.minuten + .4)); if (ck > 0) { g.save(); g.translate(1640, 860); g.scale(ck, ck); const w = pill(g, 0, 0, 'An 14 Fachkräfte gesendet', { size: 22, align: 'center' }); badge(g, -w / 2 + 26, 0, 13, C.blue, IC.check); g.restore(); } }
+function profile(g, w, h, name, role, km, kind, k) { win(g, 0, 0, w, h, { peach: 70 }); avatar(g, 60, 112, 40, kind, { ring: '#fff' });
+  txt(g, name, 28, 196, F(700, 30), C.ink, { ls: '-.5px' }); txt(g, role, 28, 228, F(500, 19), C.grey);
+  ['Examiniert', 'Nachtdienst-Erfahrung', `${km} km entfernt`].forEach((s, i) => { const kk = clamp((k - .3 - i * .18) / .15); const y = 272 + i * 40; if (kk > 0) badge(g, 40, y - 7, 12, C.blue, IC.check, back(kk)); else { g.beginPath(); g.arc(40, y - 7, 12, 0, 7); g.strokeStyle = C.line; g.lineWidth = 2; g.stroke(); } txt(g, s, 64, y, F(500, 19), C.ink); }); }
+function mapCard(g, t, w, h) { win(g, 0, 0, w, h); txt(g, 'Umkreis Ihrer Einrichtung', 30, 76, F(600, 22), C.ink);
+  g.save(); rr(g, 20, 96, w - 40, h - 116, 10); g.clip(); g.fillStyle = '#f1f2ea'; g.fillRect(0, 0, w, h); g.strokeStyle = '#e0e1d8'; g.lineWidth = 10;
+  for (const [a, b, c, d] of [[20, 180, w, 150], [120, 96, 180, h], [20, 300, w, 330], [300, 96, 260, h]]) { g.beginPath(); g.moveTo(a, b); g.lineTo(c, d); g.stroke(); }
+  const cx = w / 2, cy = 96 + (h - 116) / 2, R = 120 * p3(lin(t, K.aus2 - .2, K.region)); g.setLineDash([8, 7]); g.lineWidth = 2.5; g.strokeStyle = C.blue; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke(); g.setLineDash([]);
+  g.fillStyle = 'rgba(11,116,222,.06)'; g.fill(); g.restore();
+  badge(g, cx, cy, 20, '#111', (gg, r) => { gg.beginPath(); gg.moveTo(-r * .45, 0); gg.lineTo(0, -r * .45); gg.lineTo(r * .45, 0); gg.lineTo(r * .45, r * .42); gg.lineTo(-r * .45, r * .42); gg.closePath(); gg.fill(); });
+  [[-80, -50, 'nurse'], [90, -30, 'pdl'], [20, 80, 'man']].forEach(([dx, dy, kind], j) => { const k = back(lin(t, K.region + .1 + j * .15, K.region + .32 + j * .15)); if (k <= 0) return; g.save(); g.translate(cx + dx, cy + dy); g.scale(k, k); avatar(g, 0, 0, 26, kind, { ring: C.blue }); g.restore(); });
+  const kk = p3(lin(t, K.region + .5, K.region + .8)); if (kk > 0) { g.save(); g.globalAlpha = kk; tag(g, 30, h - 40, '12 km Umkreis', C.tb, 18); g.restore(); } }
+function sE(g, t) { bgLight(g); const dr = 10 * lin(t, CUT.E, CUT.F + .2);
+  const cards = [['Miriam S.', 'Pflegefachkraft · 9 J.', 4, 'nurse'], ['David O.', 'Pflegefachkraft · 6 J.', 7, 'man'], ['Sofia L.', 'Pflegefachkraft · 11 J.', 3, 'pdl']];
+  cards.forEach(([n, r, km, kind], j) => { const t0 = K.gepr - .15 + j * .16, k = p3(lin(t, t0, t0 + .35)), rot = (j - 1) * .035;
+    if (k <= 0) return; g.save(); g.translate(170 + j * 318, 96 + (1 - k) * 80 - dr); g.rotate(rot); g.globalAlpha = k; if (k < 1) g.filter = `blur(${(1 - k) * 12}px)`; g.scale(.9 + .1 * k, .9 + .1 * k);
+    g.scale(1.1, 1.1); profile(g, 280, 400, n, r, km, kind, lin(t, t0 + .3, t0 + 1.3)); g.restore(); });
+  const mk2 = p3(lin(t, K.aus2 - .4, K.aus2)); if (mk2 > 0) { g.save(); g.translate(1170, 110 + (1 - mk2) * 60 - dr); g.scale(1.1, 1.1); g.globalAlpha = mk2; if (mk2 < 1) g.filter = `blur(${(1 - mk2) * 12}px)`; mapCard(g, t, 560, 440); g.restore(); }
+  line(g, t, 150, 790, 112, [['Geprüfte'], ['Fachkräfte.']], K.gepr);
+  line(g, t, 150, 912, 112, [['Aus'], ['Ihrer'], ['Region.', 1]], K.aus2); }
+function sF(g, t) { bgLight(g);
+  // Overlay „48 Std.“ über unscharfer UI (wie „24/7“ im Original): „spätestens“ auf seinem Wort, die Zahl als Ganzes auf „achtundvierzig“, weg vor „ist“
+  const ov = t < K.ist - .35 ? p3(lin(t, K.spaet - .25, K.spaet)) : 1 - p3(lin(t, K.ist - .35, K.ist - .05));
+  const uk = p3(lin(t, CUT.F, CUT.F + .4)), push = 1 + .03 * lin(t, CUT.F, CUT.G + .3);
+  g.save(); g.translate(960, 600); g.scale(push, push); g.translate(-960, -600); if (ov > 0) { g.filter = `blur(${ov * 14}px)`; g.globalAlpha = 1 - ov * .55; }
+  const st = i => (i === 1 || i === 3) ? (t < (i === 1 ? K.besetzt - .12 : K.besetzt + .23) ? { state: 'open' } : { state: 'filled', k: lin(t, i === 1 ? K.besetzt - .12 : K.besetzt + .23, (i === 1 ? K.besetzt : K.besetzt + .35) + .2), name: i === 1 ? 'Miriam S.' : 'David O.', kind: i === 1 ? 'nurse' : 'man' }) : { state: 'ok' };
+  tilted(g, gg => roster(gg, t, 1100, 640, st), 1100, 640, 410, 300 + (1 - uk) * 200, (1 - uk) * .8, uk); g.restore();
+  line(g, t, 960, 200, 96, [['Schicht'], ['besetzt.', 1]], K.schicht, { align: 'center' });
+  if (ov > 0) { g.save(); g.globalAlpha = ov; const b = (1 - ov) * 18; if (b > .3) g.filter = `blur(${b}px)`;
+    txt(g, 'spätestens', 960, 330, F(600, 52), C.grey2, { align: 'center', ls: '-1px' });
+    const nk = p3(lin(t, K.n48 - .25, K.n48)); if (nk > 0) { const nz = 1 + .06 * lin(t, K.n48, K.ist); g.save(); g.globalAlpha *= nk; if (nk < 1) g.filter = `blur(${(1 - nk) * 14}px)`; g.translate(960, 560); g.scale(nz * (.94 + .06 * nk), nz * (.94 + .06 * nk)); g.translate(-960, -560); g.font = F(700, 330); g.letterSpacing = '-14px'; g.textAlign = 'center'; g.fillStyle = C.blue; g.fillText('48 Std.', 960, 640 + (1 - nk) * 26); g.restore(); }
+    g.restore(); } }
+function sG(g, t) { bgLight(g); const dr = lin(t, CUT.G, CUT.H + .3);
+  // Headline als Ganzes auf „Und“; die blaue Pille „• Ihnen.“ (wie „• Ship“) leuchtet auf ihrem Wort auf
+  line(g, t, 960, 560, 118, [['Ihr'], ['Samstag'], ['gehört']], K.und2, { align: 'center' });
+  { g.save(); g.font = F(700, 118); g.letterSpacing = '-4px'; const w1 = g.measureText('wieder').width, w2 = g.measureText('Ihnen.').width; g.restore();
+    const pw = w2 + 110, tot = w1 + 30 + pw, x0 = 960 - tot / 2, y = 690; line(g, t, x0, y, 118, [['wieder']], K.und2);
+    const k = p3(lin(t, K.und2 - LD, K.und2)); if (k > 0) { const hi = Math.sin(Math.PI * lin(t, K.ihnen - .2, K.ihnen + .45)), px = x0 + w1 + 30; g.save(); g.globalAlpha = k; if (k < 1) g.filter = `blur(${(1 - k) * 12}px)`;
+      g.translate(px + pw / 2, y - 36); g.scale(1 + .1 * hi, 1 + .1 * hi); g.translate(-(px + pw / 2), -(y - 36));
+      if (hi > 0) { g.save(); rr(g, px - 10 * hi, y - 100 - 10 * hi, pw + 20 * hi, 128 + 20 * hi, 36 + 10 * hi); g.shadowColor = `rgba(11,116,222,${.7 * hi})`; g.shadowBlur = 70 * hi; g.fillStyle = `rgba(11,116,222,${.22 * hi})`; g.fill(); g.restore(); }
+      rr(g, px, y - 100, pw, 128, 36); g.fillStyle = '#dde9f2'; g.fill();
+      g.beginPath(); g.arc(px + 40, y - 36, 9, 0, 7); g.fillStyle = C.blue; g.fill(); g.font = F(700, 118); g.letterSpacing = '-4px'; g.fillStyle = C.blue; g.fillText('Ihnen.', px + 70, y + (1 - k) * 20); g.restore(); } }
+  // Notion-Figuren links (mit Plaketten) und rechts (im roten Ring)
+  const a1 = p3(lin(t, CUT.G + .1, CUT.G + .5)); g.save(); g.globalAlpha = a1; face(g, 240, 520 - dr * 8, 1.15, 'pdl', { mood: 'happy' }); g.restore();
+  badge(g, 130, 420 - dr * 8, 34, C.gold, IC.sun, back(lin(t, K.sams2 - .3, K.sams2))); badge(g, 345, 400 - dr * 8, 30, '#fff', IC.cup, back(lin(t, K.gehoert - .3, K.gehoert))); badge(g, 352, 610 - dr * 8, 30, C.blue, IC.heart, back(lin(t, K.ihnen - .3, K.ihnen)));
+  const a2 = back(lin(t, CUT.G + .2, CUT.G + .6)); if (a2 > 0) { g.save(); g.translate(1690, 520 + dr * 6); g.scale(a2, a2); avatar(g, 0, 0, 110, 'man', { ring: C.red, glasses: true, mood: 'happy' }); g.restore(); badge(g, 1790, 610 + dr * 6, 30, '#fff', IC.check, back(lin(t, K.ihnen - .22, K.ihnen + .1))); } }
+function sH(g, t) { bgLight(g);
+  // blauer Glow-Halo hinter dem CTA
+  const ck = p3(lin(t, K.heute - .3, K.heute)); if (ck > 0) { const gr = g.createRadialGradient(960, 740, 20, 960, 740, 520); gr.addColorStop(0, `rgba(80,160,245,${.28 * ck})`); gr.addColorStop(1, 'rgba(80,160,245,0)'); g.fillStyle = gr; g.fillRect(0, 300, W, 780); }
+  const lk = back(lin(t, K.pb - .3, K.pb)); const wf = F(700, 112); g.save(); g.font = wf; g.letterSpacing = '-4px'; const ww = g.measureText('Pflegebrücke').width + 30 + g.measureText('Personal').width; g.restore();
+  const gx = 960 - (ww + 160) / 2; if (lk > 0) { g.save(); g.translate(gx + 56, 474); g.scale(lk, lk); logoMark(g, 0, 0, 1); g.restore(); }
+  const w1 = line(g, t, gx + 160, 515, 112, [['Pflegebrücke']], K.pb);
+  { const k = p3((t - (K.personal - LD)) / LD); if (k > 0) { g.save(); g.globalAlpha = k; if (k < 1) g.filter = `blur(${(1 - k) * 14}px)`; g.font = wf; g.letterSpacing = '-4px'; g.fillStyle = C.grey; g.fillText('Personal', gx + 160 + w1 + 30, 515 + (1 - k) * 26); g.restore(); } }
+  line(g, t, 960, 610, 42, [['Melden'], ['Sie'], ['heute'], ['Ihre'], ['offene'], ['Schicht.']], K.melden2, { align: 'center', w: 450, col: '#55564f' });
+  if (ck > 0) { const press = t > K.schicht2 - .06 && t < K.schicht2 + .12 ? 1 : 0; g.save(); g.translate(960, 740); g.scale((.9 + .1 * ck) * (1 - press * .05), (.9 + .1 * ck) * (1 - press * .05)); g.globalAlpha = ck;
+    rr(g, -200, -44, 400, 88, 44); g.shadowColor = 'rgba(11,116,222,.45)'; g.shadowBlur = 40; g.shadowOffsetY = 10; g.fillStyle = C.blue; g.fill(); g.shadowColor = 'transparent';
+    txt(g, t > K.schicht2 + .05 ? 'Schicht gemeldet ✓' : 'Schicht melden', 0, 11, F(600, 30), '#fff', { align: 'center' }); g.restore();
+    if (t > K.schicht2) { const r = lin(t, K.schicht2, K.schicht2 + .6); g.save(); g.globalAlpha = 1 - r; g.strokeStyle = C.blue; g.lineWidth = 3; rr(g, -200 - r * 40 + 960, 740 - 44 - r * 20, 400 + r * 80, 88 + r * 40, 44 + r * 20); g.stroke(); g.restore(); } }
+  { const k = p3(lin(t, K.schicht2 + .1, K.schicht2 + .45)); if (k > 0) { g.save(); g.globalAlpha = k; txt(g, 'PFLEGEBRUECKE.DE   ·   030 577 01 48', 960, 850, M(24), C.grey, { align: 'center', ls: '3px' }); g.restore(); } }
+  // Mauszeiger fährt ein und klickt auf „Schicht“
+  if (t > K.heute - .1) { const k = eio(lin(t, K.heute - .1, K.schicht2 - .25)), press = t > K.schicht2 - .06 && t < K.schicht2 + .12 ? 1 : 0; cursor(g, mix(1500, 1010, k), mix(1000, 752, k), press); } }
+
+// ---------- Schnitt und Überblendungen ----------
+const LAY = [mk(W, H), mk(W, H)];
+const SC = [[0, CUT.B, sA, 'd'], [CUT.B, CUT.C, sB, 'd'], [CUT.C, CUT.D, sC, 'd'], [CUT.D, CUT.E, sD, 'l'], [CUT.E, CUT.F, sE, 'l'], [CUT.F, CUT.G, sF, 'l'], [CUT.G, CUT.H, sG, 'l'], [CUT.H, 99, sH, 'l']];
+function drawScene(i, t, g) { const [a, b, fn] = SC[i]; g.save(); const push = 1 + (i === 7 ? .12 : i === 2 ? .1 : .06) * Math.min(1, (t - a) / Math.min(5.5, b - a)); g.translate(960, 540); g.scale(push, push); g.translate(-960, -540); fn(g, t); g.restore(); }
+function draw(t) { T = t; X.setTransform(1, 0, 0, 1, 0, 0); X.filter = 'none'; X.globalAlpha = 1;
+  let i = SC.findIndex(s => t >= s[0] && t < s[1]); if (i < 0) i = SC.length - 1;
+  const [a, , , kind] = SC[i], prev = SC[i - 1], D = .22;
+  // hell ↔ dunkel: harter Schnitt; innerhalb derselben Helligkeit: Unschärfe-Überblendung
+  if (prev && prev[3] === kind && t < a + D && i !== 2) { const k = (t - a) / D; const g0 = LAY[0].getContext('2d'), g1 = LAY[1].getContext('2d');
+    g0.setTransform(1, 0, 0, 1, 0, 0); g0.filter = 'none'; g0.globalAlpha = 1; drawScene(i - 1, Math.min(t, prev[1] - .001), g0); g1.setTransform(1, 0, 0, 1, 0, 0); g1.filter = 'none'; g1.globalAlpha = 1; drawScene(i, t, g1);
+    X.drawImage(LAY[0], 0, 0); X.filter = `blur(${(1 - k) * 16}px)`; X.globalAlpha = k; X.drawImage(LAY[1], 0, 0); X.filter = 'none'; X.globalAlpha = 1; }
+  else drawScene(i, t, X); }
+
+const ready = (async () => { for (const [n, u, d] of [['IN', 'Inter.ttf', { weight: '100 900' }], ['JB', 'JetBrainsMono.ttf', { weight: '100 800' }]]) { const f = new FontFace(n, `url(${u})`, d); await f.load(); document.fonts.add(f); } draw(0); })();
+window.FILM = { duration: DUR, width: W, height: H, ready, seek(t) { draw(t); } };
+</script></body></html>

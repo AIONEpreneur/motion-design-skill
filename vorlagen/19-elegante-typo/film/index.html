@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Klarsicht Beratung – V7 elegante Typo</title>
+<style>
+@font-face{font-family:'DD';src:local('Baskerville')}
+html,body{margin:0;background:#070504;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Klarsicht Beratung – V7 (ein Schlüsselwort pro Beat, exakt gesprochen, Bildmittel statt Satzstücke) im Stil von Andy Dieps Typo-Intro „made by an agent“ (September-Fassung):
+// fast schwarzer warmer Grund, schräger Lichtkegel von oben, Lichtlache auf einer glühenden Horizontlinie,
+// Schlüsselwort groß in Gold-Serife steigt aus der Linie, darüber kleine gesperrte leichte Grotesk, Staub im Licht,
+// Zeitleiste mit Punkten unten. Nichts kursiv.
+const W = 1920, H = 1080, HY = 650;       // Horizontlinie
+const C = { gold1: '#F9DFBC', gold2: '#C9A273', gold3: '#8E6F4C', sans: '#CBBFB2', sansD: '#807871', cold: '#8F969E', coldD: '#5A5F66' };
+const SANS = '300 40px "Helvetica Neue", Helvetica, Arial, sans-serif', MONO = 'Menlo, monospace';
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - x, 3), eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2, es = x => x * x * (3 - 2 * x), e5 = x => 1 - Math.pow(1 - x, 5);
+const at = (t, w, d = .34) => e5(lin(t, w - d, w - .02));
+function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+let WARM = 0;   // 0 = kaltes, unbeleuchtetes Chaos; 1 = Licht (Klarsicht)
+
+// ---------- Hintergrund, Licht, Horizont, Staub ----------
+let DUST = [];
+function bg(g, t) {
+  g.fillStyle = '#060504'; g.fillRect(0, 0, W, H);
+  const r = g.createRadialGradient(W * .5, HY - 60, 50, W * .5, HY, 1100); r.addColorStop(0, `rgba(${mix(22, 42, WARM) | 0},${mix(22, 28, WARM) | 0},${mix(26, 18, WARM) | 0},1)`); r.addColorStop(1, 'rgba(6,5,4,0)'); g.fillStyle = r; g.fillRect(0, 0, W, H);
+  const r2 = g.createRadialGradient(W * .88, H * .3, 10, W * .88, H * .3, 700); r2.addColorStop(0, 'rgba(16,12,22,.8)'); r2.addColorStop(1, 'rgba(16,12,22,0)'); g.fillStyle = r2; g.fillRect(0, 0, W, H);
+}
+function beam(g, t, k, cx = 960) {
+  if (k <= 0) return; const sway = 55 * Math.sin(t * .8), top = 1330 + sway, px = cx + 25 * Math.sin(t * .6);
+  g.save(); g.globalCompositeOperation = 'lighter';
+  // zwei klar begrenzte Lichtschächte, die über die Linie hinaus nach unten auslaufen
+  const dx = (px - top) / (HY + 80), yb = H + 40, xb = top + dx * (yb + 80);
+  for (const [off, w0, w1, a, bl] of [[-50, 24, 140, .13, 6], [70, 20, 110, .095, 6], [0, 110, 380, .04, 30]]) { const gr = g.createLinearGradient(top, -80, xb, yb);
+    gr.addColorStop(0, `rgba(255,238,210,${a * 1.25 * k})`); gr.addColorStop(.6, `rgba(255,222,175,${a * .75 * k})`); gr.addColorStop(.82, 'rgba(255,215,165,0)'); g.filter = `blur(${bl}px)`;
+    g.fillStyle = gr; g.beginPath(); g.moveTo(top + off - w0, -80); g.lineTo(top + off + w0, -80); g.lineTo(xb + off * 1.8 + w1 * 1.6, yb); g.lineTo(xb + off * 1.8 - w1 * 1.6, yb); g.closePath(); g.fill(); }
+  g.filter = 'none';
+  const p = g.createRadialGradient(px, HY, 0, px, HY, 380); p.addColorStop(0, `rgba(230,190,140,${.55 * k})`); p.addColorStop(.35, `rgba(190,150,105,${.22 * k})`); p.addColorStop(1, 'rgba(120,90,60,0)');
+  g.save(); g.translate(px, HY); g.scale(1, .55); g.translate(-px, -HY); g.fillStyle = p; g.fillRect(px - 400, HY - 400, 800, 800); g.restore();
+  g.restore();
+}
+function horizon(g, t, k, bend = 0) {
+  const a = mix(.35, 1, WARM) * k; if (a <= 0) return; g.save();
+  const gr = g.createLinearGradient(80, 0, W - 80, 0); const mid = WARM ? `rgba(240,210,165,${a})` : `rgba(150,150,155,${a})`, side = WARM ? `rgba(110,90,70,${a * .6})` : `rgba(80,80,85,${a * .5})`;
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.25, side); gr.addColorStop(.5, mid); gr.addColorStop(.75, side); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.strokeStyle = gr; g.lineWidth = 1.6; g.shadowColor = WARM ? `rgba(255,200,140,${.8 * a})` : 'rgba(0,0,0,0)'; g.shadowBlur = 12;
+  g.beginPath(); for (let x = 80; x <= W - 80; x += 10) { const d = (x - 960) / 520, y = HY + bend * Math.exp(-d * d * 2.2); x === 80 ? g.moveTo(x, y) : g.lineTo(x, y); } g.stroke(); g.restore();
+}
+function dust(g, t, k) {
+  g.save(); g.globalCompositeOperation = 'lighter';
+  for (const d of DUST) { const y = ((d.y - t * d.v) % H + H) % H, x = d.x + 18 * Math.sin(t * d.w + d.p); const tw = .55 + .45 * Math.sin(t * d.f + d.p);
+    const inBeam = Math.exp(-Math.pow((x - mix(1330, 960, y / HY)) / 260, 2)) * (y < HY + 60 ? 1 : .3); const a = d.a * tw * (.5 + .5 * WARM * (.3 + 1.2 * inBeam)) * k;
+    if (d.big) { const r = g.createRadialGradient(x, y, 0, x, y, d.r); r.addColorStop(0, `rgba(255,220,170,${a * .34})`); r.addColorStop(1, 'rgba(255,220,170,0)'); g.fillStyle = r; g.fillRect(x - d.r, y - d.r, 2 * d.r, 2 * d.r); }
+    else { g.fillStyle = `rgba(255,236,210,${a})`; g.beginPath(); g.arc(x, y, d.r, 0, 7); g.fill(); } }
+  g.restore();
+}
+
+// ---------- Typografie ----------
+// Gold-Serife (aufrecht), steigt aus der Horizontlinie, weich (Unschärfe -> scharf)
+let WC;
+function goldWord(g, s, x, y, size, k, opt = {}) {
+  if (k <= 0) return; const out = opt.out || 0; const cold = opt.cold ?? (1 - WARM);
+  const c = WC.getContext('2d'); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, W, H);
+  c.font = `${size}px DD`; c.textAlign = opt.align || 'center'; c.textBaseline = 'alphabetic'; c.letterSpacing = (opt.ls || 0) + 'px';
+  const gr = c.createLinearGradient(0, y - size * .75, 0, y + size * .05);
+  if (cold > .5) { gr.addColorStop(0, '#C9CDD2'); gr.addColorStop(1, '#6E747B'); } else { gr.addColorStop(0, C.gold1); gr.addColorStop(.55, C.gold2); gr.addColorStop(1, C.gold3); }
+  c.fillStyle = gr; const rise = opt.noRise ? 0 : (1 - k) * size * .95 + out * size * .95; c.fillText(s, x, y + rise);
+  // Lichtkante: helle Stelle, wo der Kegel trifft
+  if (cold <= .5) { c.globalCompositeOperation = 'source-atop'; const r = c.createRadialGradient(opt.lx ?? 1080, y - size * .4, 0, opt.lx ?? 1080, y - size * .4, size * 2.2); r.addColorStop(0, 'rgba(255,245,225,.55)'); r.addColorStop(1, 'rgba(255,245,225,0)'); c.fillStyle = r; c.fillRect(0, 0, W, H); c.globalCompositeOperation = 'source-over'; }
+  g.save(); if (!opt.noClip) { g.beginPath(); g.rect(0, 0, W, opt.clipY ?? HY - 2); g.clip(); }
+  const blur = (1 - k) * 14 + out * 10; g.globalAlpha = clamp(k * 1.4) * (1 - out) * (opt.alpha ?? 1); if (blur > .3) g.filter = `blur(${blur.toFixed(1)}px)`;
+  if (cold <= .5) { g.shadowColor = 'rgba(255,190,120,.35)'; g.shadowBlur = 30; }
+  g.drawImage(WC, 0, 0); g.restore();
+}
+// kleine gesperrte leichte Grotesk; Sperrung zieht sich beim Erscheinen zusammen
+function sans(g, s, x, y, size, k, opt = {}) {
+  if (k <= 0) return; const out = opt.out || 0; g.save(); g.font = `300 ${size}px "Helvetica Neue", Helvetica, sans-serif`; g.textAlign = opt.align || 'center'; g.textBaseline = 'alphabetic';
+  const ls = (opt.ls ?? size * .12) + (1 - k) * size * .45 + out * size * .3; g.letterSpacing = ls + 'px';
+  g.globalAlpha = clamp(k * 1.3) * (1 - out) * (opt.alpha ?? 1); g.fillStyle = opt.col || (WARM > .5 ? C.sans : C.cold); if ((1 - k) * 8 > .3) g.filter = `blur(${((1 - k) * 8).toFixed(1)}px)`;
+  g.fillText(s, x + (opt.align === 'center' || !opt.align ? ls / 2 : 0), y); g.restore();
+}
+function arrow(g, x0, x1, y, k, col) { if (k <= 0) return; const x = mix(x0, x1, e5(k)); g.save(); g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(x0, y); g.lineTo(x, y); g.stroke();
+  if (k > .6) { g.globalAlpha = lin(k, .6, 1); g.beginPath(); g.moveTo(x - 16, y - 9); g.lineTo(x, y); g.lineTo(x - 16, y + 9); g.stroke(); } g.restore(); }
+// Zeitleiste unten wie im Original
+function timeline(g, t, k, n, active, labels) {
+  if (k <= 0) return; const x0 = 560, x1 = 1360, y = 985; g.save(); g.globalAlpha = k;
+  const gr = g.createLinearGradient(x0 - 40, 0, x1 + 40, 0); gr.addColorStop(0, 'rgba(120,110,100,0)'); gr.addColorStop(.1, 'rgba(120,110,100,.7)'); gr.addColorStop(.9, 'rgba(120,110,100,.7)'); gr.addColorStop(1, 'rgba(120,110,100,0)');
+  g.strokeStyle = gr; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x0 - 40, y); g.lineTo(x1 + 40, y); g.stroke();
+  for (let i = 0; i < n; i++) { const x = mix(x0, x1, i / (n - 1)), on = i <= active; g.fillStyle = on ? C.gold1 : 'rgba(150,140,130,.8)'; g.beginPath(); g.arc(x, y, on ? 3.4 : 2.6, 0, 7); g.fill();
+    if (labels[i]) { g.font = `500 16px ${MONO}`; g.letterSpacing = '2px'; g.textAlign = 'center'; g.fillStyle = on ? '#D9C3A2' : C.sansD; g.fillText(labels[i], x, y + 38); g.letterSpacing = '0px'; } }
+  const ax = mix(x0, x1, clamp(active / (n - 1))); const r = g.createRadialGradient(ax, y, 0, ax, y, 26); r.addColorStop(0, 'rgba(255,225,170,.95)'); r.addColorStop(.3, 'rgba(240,190,120,.45)'); r.addColorStop(1, 'rgba(240,190,120,0)');
+  g.globalCompositeOperation = 'lighter'; g.fillStyle = r; g.fillRect(ax - 26, y - 26, 52, 52); g.restore(); }
+
+
+// ---------- V7-Bildmittel ----------
+// Gold-Text ohne Aufstieg (für die drei gewählten Einträge)
+function goldText(g, s, x, y, size, a, align = 'center') { if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = `${size}px DD`; g.textAlign = align;
+  const gr = g.createLinearGradient(0, y - size * .75, 0, y + size * .05); gr.addColorStop(0, C.gold1); gr.addColorStop(.55, C.gold2); gr.addColorStop(1, C.gold3);
+  g.fillStyle = gr; g.shadowColor = 'rgba(8,5,3,.85)'; g.shadowBlur = 14; g.fillText(s, x, y); g.fillText(s, x, y); g.restore(); }  // dunkler Hof: lesbar auch in der Lichtlache
+function wGold(s, size) { X.save(); X.font = `${size}px DD`; const w = X.measureText(s).width; X.restore(); return w; }
+function wSans(s, size) { X.save(); X.font = `300 ${size}px "Helvetica Neue", Helvetica, sans-serif`; X.letterSpacing = size * .12 + 'px'; const w = X.measureText(s).width; X.restore(); return w; }
+// Zahl groß in Gold + Einheit klein in Grotesk (wie „made by an / agent“, nur als Zahl mit Einheit); optional Minus-Strich davor
+function numUnit(g, num, unit, cx, y, size, kN, kU, o = {}) {
+  const nw = wGold(num, size), us = Math.max(26, size * .13), uw = wSans(unit, us), gap = size * .1, ml = o.minus !== undefined ? size * .42 : 0, mg = ml ? size * .08 : 0;
+  const x0 = cx - (ml + mg + nw + gap + uw) / 2;
+  if (ml && o.minus > 0) { const k = e5(o.minus), th = size * .045, my = y - size * .29; g.save(); g.globalAlpha = 1 - (o.out || 0);
+    const gr = g.createLinearGradient(0, my - th, 0, my + th); gr.addColorStop(0, C.gold1); gr.addColorStop(1, C.gold3); g.fillStyle = gr; g.shadowColor = 'rgba(255,190,120,.5)'; g.shadowBlur = 16;
+    g.fillRect(x0, my - th / 2, ml * k, th); g.restore(); }
+  goldWord(g, num, x0 + ml + mg, y, size, kN, { align: 'left', out: o.out, cold: o.cold, noClip: o.noClip, lx: x0 + ml + nw * .7 });
+  sans(g, unit, x0 + ml + mg + nw + gap, y, us, kU, { align: 'left', out: o.out, col: o.cold > .5 ? C.cold : C.sans });
+}
+// der Lichtpunkt „Sie“ (und die Team-Punkte) – wird im Bildschirmraum auf die Horizontlinie gesetzt
+let CZ = 1;
+const sx = x => W / 2 + CZ * (x - W / 2);
+function pointOnLine(g, x, y, k, o = {}) { if (k <= 0) return; g.save(); g.setTransform(1, 0, 0, 1, 0, 0); const X0 = sx(x); g.globalAlpha = k * (o.alpha ?? 1);
+  const col = WARM > .5 ? '255,226,180' : '205,210,216', R = (o.r ?? 7) * (1 + .12 * CZ - .12);
+  g.globalCompositeOperation = 'lighter'; const r = g.createRadialGradient(X0, y, 0, X0, y, R * 5); r.addColorStop(0, `rgba(${col},.5)`); r.addColorStop(1, `rgba(${col},0)`); g.fillStyle = r; g.fillRect(X0 - R * 5, y - R * 5, R * 10, R * 10);
+  g.globalCompositeOperation = 'source-over'; g.fillStyle = `rgb(${col})`; g.beginPath(); g.arc(X0, y, R, 0, 7); g.fill();
+  if (o.ring > 0 && o.ring < 1) { g.strokeStyle = `rgba(${col},${(1 - o.ring) * .85})`; g.lineWidth = 1.6; g.beginPath(); g.arc(X0, y, R + 8 + 50 * e5(o.ring), 0, 7); g.stroke(); }
+  g.restore(); }
+function arrowOnLine(g, x0, x1, y, a, col, w = 2.4) { if (a <= 0 || x1 - x0 < 4) return; g.save(); g.setTransform(1, 0, 0, 1, 0, 0); const A = sx(x0), B = sx(x1); g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round';
+  g.shadowColor = col; g.shadowBlur = 8; g.beginPath(); g.moveTo(A, y); g.lineTo(B, y); g.stroke(); g.beginPath(); g.moveTo(B - 15, y - 9); g.lineTo(B, y); g.lineTo(B - 15, y + 9); g.stroke(); g.restore(); }
+function tickOnLine(g, x, y, a, col) { if (a <= 0) return; g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = a; g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(sx(x), y - 16); g.lineTo(sx(x), y + 16); g.stroke(); g.restore(); }
+function sansScreen(g, s, x, y, size, k, col) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); sans(g, s, sx(x), y, size, k, { col }); g.restore(); }
+function lineY() { return HY; }   // Punkte sitzen immer exakt auf der (nicht mitfahrenden) Horizontlinie
+
+// ---------- Aufgaben ----------
+const TASKS = ['Angebote', 'Personal', 'Rechnungen', 'Kunden', 'Mails', 'Termine', 'Steuer', 'Lager', 'Einkauf', 'Anrufe', 'Messe', 'Fuhrpark', 'Bank', 'IT', 'Ablage', 'Website',
+  'Buchhaltung', 'Mahnungen', 'Schulung', 'Lieferanten', 'Versicherung', 'Datenschutz', 'Kalkulation', 'Meetings', 'Reklamation', 'Urlaubsplan', 'Social Media', 'Inventur', 'Bewerbungen', 'Behörde'];
+const TOP = ['Kunden', 'Angebote', 'Personal'];               // „was wirklich zählt“ (vorher groß gesprochen)
+const LIST = TOP.concat(TASKS.filter(s => !TOP.includes(s)));  // 30 Einträge = „dreißig Baustellen“
+let PILE = [], CHAOS = [];
+function buildPile() { const R = rng(11); PILE = TASKS.map((s, i) => { const row = Math.floor(i / 6), col = i % 6; const tx = 960 + (col - 2.5) * 175 * (1 - row * .1) + (R() - .5) * 70 + (row % 2) * 50, ty = HY - 20 - row * 40 - (R() * 10);
+    return { s, tx, ty, rot: (R() - .5) * .5, x0: 200 + R() * 1520, delay: R() * .55, size: 30 + R() * 14 }; });
+  const Q = rng(4); CHAOS = LIST.map(() => ({ x: 200 + Q() * 1520, y: 720 + Q() * 270, r: (Q() - .5) * .6 })); }
+const listPos = i => [560 + (i % 3) * 400, 712 + Math.floor(i / 3) * 29];
+
+// jede Szene hat ihre eigene, stetige Kamerafahrt (langsames Heranfahren + Steigen)
+function cam(g, a, b, t) { const sp = clamp((t - a) / (b - a)), z = 1 + .12 * (.6 * es(sp) + .4 * sp), dy = -34 * sp; CZ = z; g.setTransform(z, 0, 0, z, W / 2 - z * W / 2, HY + dy - z * HY); }
+// ---------- Bild ----------
+function frame(t) {
+  const g = X; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.filter = 'none'; g.globalCompositeOperation = 'source-over'; CZ = 1;
+  WARM = es(lin(t, K.klarsicht - .6, K.klarsicht - .05));
+  g.save();
+  bg(g, t);
+  const beamK = WARM * (1 + .35 * es(lin(t, K.urlaub - .4, K.urlaub + .3)) * (1 - lin(t, K.name - .5, K.name)));
+  beam(g, t, beamK);
+  dust(g, t, 1);
+  // Durchbiegung der Horizontlinie unter dem Aufgabenberg
+  const load = es(lin(t, K.landet - .1, K.ihnen - .05)) * (1 - es(lin(t, K.angebote - .5, K.angebote - .2)));
+  horizon(g, t, 1, 30 * load);
+
+  // --- 1: „Siebzig Stunden die Woche, und alles landet bei Ihnen.“ – 70 stunden, dann fällt der Berg auf den Punkt (Sie)
+  const e1 = K.angebote - .1;
+  if (t < e1) { cam(g, 0, e1, t); const out = es(lin(t, K.angebote - .45, K.angebote - .18)); const up = es(lin(t, K.alles - .45, K.alles - .1));
+    numUnit(g, '70', 'stunden', 960, mix(HY - 20, 250, up), mix(340, 150, up), at(t, K.siebzig, .26), at(t, K.stunden, .28), { out, cold: 1, noClip: up > .02 });
+    for (const p of PILE) { const a0 = K.landet - .3 + p.delay * .5, k = es(lin(t, a0, a0 + .45)); if (k <= 0) continue; const x = mix(p.x0, p.tx, k), y = mix(-60, p.ty - 70 + 30 * load * Math.exp(-Math.pow((p.tx - 960) / 520, 2) * 2.2), k);
+      g.save(); g.translate(x, y); g.rotate(p.rot * (1 - k * .6)); g.globalAlpha = (1 - out) * .42; g.filter = 'blur(2.2px)'; g.font = `300 ${p.size}px "Helvetica Neue", sans-serif`; g.textAlign = 'center'; g.fillStyle = C.cold; g.fillText(p.s, 0, 0); g.restore(); }
+    pointOnLine(g, 960, HY + 30 * load, at(t, K.alles, .25) * (1 - out), { ring: lin(t, K.ihnen - .2, K.ihnen + .6), r: 7 * (1 - .25 * load) }); }
+  // --- 2: „Angebote, Personal, Rechnungen, Kunden.“ – jedes Wort steigt kalt aus der Linie, die vorigen bleiben als Last
+  if (t > K.angebote - .5 && t < K.sie) { cam(g, K.angebote - .5, K.sie, t); const words = [['Angebote', K.angebote], ['Personal', K.personal], ['Rechnungen', K.rechnungen], ['Kunden', K.kunden]]; const out = es(lin(t, K.sie - .45, K.sie - .12));
+    words.forEach(([s, w], i) => { const nxt = words[i + 1] ? words[i + 1][1] : 99; const k = at(t, w, .3); if (k <= 0) return; const shrink = es(lin(t, nxt - .34, nxt - .06));
+      const pos = [[520, 250], [1400, 250], [560, 470], [1360, 470]][i]; const x = mix(960, pos[0], shrink), y = mix(HY - 20, pos[1], shrink), size = mix(190, 64, shrink);
+      goldWord(g, s, x, y, size, k, { cold: 1, noClip: shrink > .02, out, alpha: mix(1, .55, shrink) }); });
+    // unscharfe Tiefenebene: der Berg wächst weiter (Textur, keine Lesezeile)
+    const n = Math.round(4 + 26 * es(lin(t, K.angebote, K.kunden + .4))); const R = rng(4);
+    for (let i = 4; i < Math.min(n, TASKS.length); i++) { const x = 160 + R() * 1600, y = 130 + R() * 460; if (Math.abs(x - 960) < 380 && y > 330) continue; g.save(); g.globalAlpha = .3 * (1 - out); g.filter = 'blur(1.6px)'; g.font = `300 ${22 + R() * 10 | 0}px "Helvetica Neue", sans-serif`; g.fillStyle = C.coldD; g.textAlign = 'center'; g.fillText(TASKS[i], x, y); g.restore(); } }
+  // --- 3: „Sie arbeiten mehr, aber die Firma tritt auf der Stelle.“ – mehr (Punkt hetzt), Firma (Pfeil schnappt zweimal zurück)
+  if (t > K.sie - .35 && t < K.klarsicht - .1) { cam(g, K.sie - .35, K.klarsicht - .1, t); const out = es(lin(t, K.klarsicht - .5, K.klarsicht - .2)); const m1 = es(lin(t, K.firma - .35, K.firma - .06));
+    goldWord(g, 'mehr', 960, HY - 20, 230, at(t, K.mehr, .28), { cold: 1, out: Math.max(out, m1), ls: 8 + 34 * es(lin(t, K.mehr - .1, K.firma - .3)) });
+    goldWord(g, 'Firma', 960, HY - 20, 230, at(t, K.firma, .3), { cold: 1, out });
+    const busy = at(t, K.sie, .22) * (1 - m1), px = mix(960 + 11 * Math.sin(t * 46) * busy, 640, m1);
+    pointOnLine(g, px, HY, at(t, K.sie, .22) * (1 - out), { r: 8.5 });
+    const push = ev => es(lin(t, ev - .26, ev - .02)) * (1 - es(lin(t, ev + .1, ev + .34)));
+    const p = Math.max(push(K.tritt), push(K.stelle)), ak = at(t, K.firma, .3) * (1 - out);
+    tickOnLine(g, 1240, HY, ak * .8, 'rgba(200,205,210,.85)');
+    arrowOnLine(g, 664, 700 + 390 * p, HY, ak, 'rgba(225,230,236,.95)', 3.4); }
+  // --- 4 + 5: Licht an. „Klarsicht Beratung sortiert mit Ihnen, was wirklich zählt. Drei Prioritäten statt dreißig Baustellen.“
+  if (t > K.klarsicht - .6 && t < K.zwoelf) { cam(g, K.klarsicht - .6, K.zwoelf, t);
+    const o4 = es(lin(t, K.drei - .45, K.drei - .15)), up = es(lin(t, K.sortiert - .3, K.sortiert - .02));
+    sans(g, 'beratung', 960, mix(430, 118, up), mix(40, 28, up), at(t, K.beratung, .3), { out: o4 });
+    goldWord(g, 'Klarsicht', 960, mix(HY - 20, 200, up), mix(240, 90, up), at(t, K.klarsicht, .35), { noClip: up > .02, out: o4 });
+    const vis = es(lin(t, K.klarsicht - .4, K.klarsicht + .2)), lit = at(t, K.zaehlt, .3), fly = es(lin(t, K.drei - .3, K.drei - .02));
+    const o5 = es(lin(t, K.zwoelf - .45, K.zwoelf - .15));
+    const sink = 34 * es(lin(t, K.zaehlt - .1, K.n30 - .3)), breathe = 5 * Math.sin((t - K.zaehlt) * 3.2);
+    LIST.forEach((s, i) => { const [lx, ly] = listPos(i), c = CHAOS[i], arr = K.sortiert - .02 + i * .034, sk = es(lin(t, arr - .36, arr)); const x = mix(c.x, lx, sk), y = mix(c.y, ly, sk) + (i < 3 ? -breathe * lit * (1 - fly) : sink * lit);
+      if (i < 3) { // die drei, die zählen
+        const w = wGold(s, 64), sx0 = 880 + w / 2, sy0 = HY - 190 + i * 78 - 20;
+        if (lit <= 0) { g.save(); g.globalAlpha = vis * .5; g.translate(x, y); g.rotate(c.r * (1 - sk)); if (sk < 1) g.filter = `blur(${((1 - sk) * 2).toFixed(1)}px)`; g.font = '300 24px "Helvetica Neue", sans-serif'; g.textAlign = 'center'; g.fillStyle = C.sansD; g.fillText(s, 0, 0); g.restore(); }
+        else goldText(g, s, mix(x, sx0, fly), mix(y - 14 * lit, sy0, fly), mix(mix(24, 42, lit), 64, fly), Math.min(1, lit * 1.3) * (1 - o5));
+      } else { const gat = es(lin(t, K.n30 - .3 + (i % 9) * .006, K.n30 - .02)); const a = vis * mix(.5, .22, lit) * (1 - gat); if (a <= .005) return;
+        g.save(); g.globalAlpha = a; g.translate(mix(x, 960, gat), mix(y, HY + 118, gat)); g.rotate(c.r * (1 - sk)); if (sk < 1 || gat > 0) g.filter = `blur(${((1 - sk) * 2 + gat * 4).toFixed(1)}px)`;
+        g.font = `300 ${mix(24, 22, sk) * (1 - .6 * gat)}px "Helvetica Neue", sans-serif`; g.textAlign = 'center'; g.fillStyle = C.sansD; g.fillText(s, 0, 0); g.restore(); } });
+    // 3 statt 30
+    goldWord(g, '3', 700, HY - 20, 300, at(t, K.drei, .3), { out: o5 });
+    const fall = es(lin(t, K.baustellen + .25, K.baustellen + .85)), k30 = at(t, K.n30, .28) * (1 - o5) * (1 - fall); if (k30 > 0) { g.save(); g.translate(0, 140 * fall); g.globalAlpha = k30; if (fall > 0) g.filter = `blur(${(fall * 6).toFixed(1)}px)`; g.font = '120px DD'; g.fillStyle = C.cold; g.textAlign = 'center'; g.fillText('30', 960, HY + 170);
+      const w30 = wGold('30', 120), st = e5(lin(t, K.baustellen - .28, K.baustellen - .02)); if (st > 0) { const xa = 960 - w30 / 2 - 22, xb = xa + (w30 + 44) * st; g.save(); g.globalAlpha = k30; g.strokeStyle = C.gold2; g.lineWidth = 6; g.lineCap = 'round'; g.shadowColor = 'rgba(255,190,120,.6)'; g.shadowBlur = 12;
+        g.beginPath(); g.moveTo(xa, HY + 144); g.lineTo(xb, HY + 144 - 16 * st); g.stroke(); g.restore(); } g.restore(); } }
+  // --- 6: „Zwölf Wochen, ein Termin pro Woche.“ – Zeitleiste, ein Punkt pro Woche
+  if (t > K.zwoelf - .4 && t < K.ihr) { cam(g, K.zwoelf - .4, K.ihr, t); const out = es(lin(t, K.ihr - .4, K.ihr - .1));
+    goldWord(g, '12 Wochen', 960, HY - 20, 210, at(t, K.zwoelf, .3), { out });
+    const act = Math.min(11, Math.floor(12 * lin(t, K.termin - .22, K.team - .25))); const labels = Array.from({ length: 12 }, (_, i) => 'W' + (i + 1));
+    timeline(g, t, at(t, K.zwoelf, .35) * (1 - out), 12, act, labels); }
+  // --- 7: „Ihr Team übernimmt, Sie führen wieder.“ – drei Einträge gehen vom Sie-Punkt zum Team, der Punkt setzt sich nach vorn
+  if (t > K.ihr - .35 && t < K.n20 - .2) { cam(g, K.ihr - .35, K.n20 - .2, t); const out = es(lin(t, K.n20 - .5, K.n20 - .25));
+    const kin = es(lin(t, K.ihr - .35, K.ihr - .05)), wOut = es(lin(t, K.fuehren - .4, K.fuehren - .12)), lead = es(lin(t, K.fuehren - .42, K.fuehren - .02));
+    const TX = [1100, 1150, 1200], walk = 60 * Math.max(0, t - K.fuehren);
+    TOP.forEach((s, i) => { const kk = es(lin(t, K.team - .05 + i * .03, K.uebernimmt - .02)); const x = mix(700, 1150, kk), y = HY - 70 - i * 46 - Math.sin(kk * Math.PI) * 60;
+      goldText(g, s, x, y, 40, kin * (1 - wOut)); });
+    pointOnLine(g, mix(700, 1300, lead) + walk, HY, kin * (1 - out), { ring: lin(t, K.sie2 - .25, K.sie2 + .5), r: 8.5 });
+    TX.forEach((x, i) => pointOnLine(g, x - 30 * lead + walk, HY, at(t, K.team + i * .04, .28) * (1 - out), { r: 5.5 }));
+    sansScreen(g, 'team', 1150 - 30 * lead + walk, HY + 58, 30, at(t, K.team, .28) * (1 - out), C.sans);
+    arrowOnLine(g, 1322 + walk, 1322 + walk + 110 * es(lin(t, K.fuehren - .15, K.fuehren + .2)), HY, lead * (1 - out), 'rgba(250,225,185,.9)', 2);
+    goldWord(g, 'führen', 960, HY - 20, 200, at(t, K.fuehren, .3), { out }); }
+  // --- 8: „Das Ergebnis: zwanzig Stunden weniger.“ – Echo auf „70 stunden“, jetzt warm, Minus auf „weniger“
+  if (t > K.n20 - .45 && t < K.urlaub - .25) { cam(g, K.n20 - .45, K.urlaub - .25, t); const out = es(lin(t, K.urlaub - .55, K.urlaub - .3));
+    numUnit(g, '20', 'stunden', 960, HY - 20, 340, at(t, K.n20, .28), at(t, K.stunden2, .28), { out, minus: lin(t, K.weniger - .28, K.weniger - .02) }); }
+  // --- 9: „Und endlich Urlaub.“
+  if (t > K.urlaub - .45 && t < K.name - .1) { cam(g, K.urlaub - .45, K.name - .1, t); goldWord(g, 'Urlaub', 960, HY - 20, 300, at(t, K.urlaub, .32), { out: es(lin(t, K.name - .45, K.name - .15)) }); }
+  // --- 10: „Klarsicht Beratung. Das erste Gespräch ist kostenlos.“ – Name, Pfeilsatz gespräch → kostenlos, Kontakt
+  if (t > K.name - .5) { cam(g, K.name - .5, DUR, t); const up = es(lin(t, K.gespraech - .45, K.gespraech - .1));
+    sans(g, 'beratung', 960, mix(360, 200, up), mix(40, 30, up), at(t, K.beratung2, .3));
+    goldWord(g, 'Klarsicht', 960, mix(HY - 20, 320, up), mix(250, 150, up), at(t, K.name, .35), { noClip: up > .02 });
+    const ak = at(t, K.gespraech, .28); if (ak > 0) { g.save(); g.globalAlpha = ak; g.font = '300 58px "Helvetica Neue", sans-serif'; g.letterSpacing = '2px'; g.textAlign = 'right'; g.fillStyle = C.sans; g.fillText('gespräch', 1000, HY - 22); g.restore(); }
+    arrow(g, 1030, 1140, HY - 40, lin(t, K.gespraech + .15, K.kostenlos - .2), C.sans);
+    goldWord(g, 'kostenlos', 1165, HY - 20, 110, at(t, K.kostenlos, .3), { align: 'left', lx: 1320 });
+    sans(g, 'klarsicht-beratung.de   ·   0621 43 21 90', 960, HY + 110, 32, at(t, K.ende + .2, .4), { col: C.sans });
+    const wk = at(t, K.name, .4); timeline(g, t, wk * .9 * (1 - lin(t, DUR - .5, DUR)), 5, 4, ['', '', '', '', '']); }
+  g.restore();
+  // Vignette
+  const v = g.createRadialGradient(W / 2, H / 2, 420, W / 2, H / 2, 1150); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.55)'); g.fillStyle = v; g.fillRect(0, 0, W, H);
+  const f = Math.max(1 - lin(t, 0, .06), lin(t, DUR - .45, DUR)); if (f > 0) { g.fillStyle = `rgba(6,5,4,${f})`; g.fillRect(0, 0, W, H); }
+}
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => {
+  await Promise.all([document.fonts.load('40px DD'), document.fonts.load('300 40px "Helvetica Neue"'), document.fonts.load(`500 17px ${MONO}`)]);
+  WC = mk(W, H); buildPile(); const R = rng(21); DUST = Array.from({ length: 480 }, (_, i) => ({ x: R() * W, y: R() * H, v: 16 + R() * 50, w: .1 + R() * .3, p: R() * 6.28, f: .6 + R() * 2, a: .35 + R() * .65, r: i < 26 ? 18 + R() * 30 : .8 + R() * 1.9, big: i < 26 }));
+  frame(0); return true; })(),
+  seek(t) { frame(t); } };
+</script>
+</body></html>

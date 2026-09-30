@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Stadtbote Kurier – V7 historische Karte</title>
+<style>
+html,body{margin:0;background:#E6D9BE;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Stadtbote Kurier – V5 im Stil von Andy Dieps „Saratoga“-Karte: Pergament, feine Sepia-Tuschelinien,
+// dicke rote Pinselrouten mit Widerhaken-Pfeil, gesperrte Serifen-Versalien, Doppelrahmen-Kartusche, Baum-Kreise.
+const W = 1920, H = 1080;
+const P = { paper: '#E6D9BE', paperL: '#EEE3CE', water: '#EAE2CD', ink: '#4E4230', inkD: '#3A2E1B', lab: '#5B4E3A', red: '#9C3A2B', redD: '#7A2A1F',
+  redL: '#C07A68', redF: 'rgba(158,90,70,.30)', blue: '#4A5670', blueF: '#8A93A3', blot: '#2B2217' };
+const SERIF = '"Iowan Old Style", "Hoefler Text", Georgia, serif';
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - x, 3), eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2, es = x => x * x * (3 - 2 * x);
+const back = x => { const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+// fertig spätestens zur Wortzeit w: Einblendung beginnt d s vorher
+const at = (t, w, d = .32) => eo(lin(t, w - d, w - .02));
+function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hash(i, s) { let h = Math.imul((i | 0) ^ Math.imul(s | 0, 374761393), 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+function vn(x, s = 0) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return mix(hash(i, s), hash(i + 1, s), u) * 2 - 1; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function chaikin(p, n = 3) { for (let k = 0; k < n; k++) { const q = [p[0]]; for (let i = 0; i < p.length - 1; i++) { const a = p[i], b = p[i + 1]; q.push([a[0] * .75 + b[0] * .25, a[1] * .75 + b[1] * .25], [a[0] * .25 + b[0] * .75, a[1] * .25 + b[1] * .75]); } q.push(p[p.length - 1]); p = q; } return p; }
+function poly(p) { const L = [0]; for (let i = 1; i < p.length; i++) L.push(L[i - 1] + Math.hypot(p[i][0] - p[i - 1][0], p[i][1] - p[i - 1][1])); return { p, L, len: L[L.length - 1] }; }
+function ptAt(P, u) { const d = clamp(u) * P.len; let lo = 1, hi = P.L.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (P.L[m] < d) lo = m + 1; else hi = m; } const i = lo; const k = (d - P.L[i - 1]) / ((P.L[i] - P.L[i - 1]) || 1), a = P.p[i - 1], b = P.p[i]; return [mix(a[0], b[0], k), mix(a[1], b[1], k), Math.atan2(b[1] - a[1], b[0] - a[0])]; }
+function subPts(P, u0, u1) { const out = [ptAt(P, u0)]; const d0 = u0 * P.len, d1 = u1 * P.len; for (let i = 0; i < P.p.length; i++) if (P.L[i] > d0 && P.L[i] < d1) out.push(P.p[i]); out.push(ptAt(P, u1)); return out; }
+function resample(p, step) { const Q = poly(p), n = Math.max(2, Math.ceil(Q.len / step)), o = []; for (let i = 0; i <= n; i++) { const a = ptAt(Q, i / n); o.push([a[0], a[1]]); } return o; }
+// Handzittern: Punkte entlang der Normalen versetzen
+function wob(p, amp, seed, step = 7, freq = 45) { const r = resample(p, step), o = []; let d = 0; for (let i = 0; i < r.length; i++) { if (i) d += Math.hypot(r[i][0] - r[i - 1][0], r[i][1] - r[i - 1][1]);
+  const a = r[Math.max(0, i - 1)], b = r[Math.min(r.length - 1, i + 1)], ang = Math.atan2(b[1] - a[1], b[0] - a[0]), n = amp * (vn(d / freq, seed) + .35 * vn(d / 9, seed + 9));
+  o.push([r[i][0] - Math.sin(ang) * n, r[i][1] + Math.cos(ang) * n]); } return o; }
+function txt(g, s, x, y, size, col, opt = {}) { g.font = `${opt.w || 400} ${size}px ${SERIF}`; g.fillStyle = col; g.textAlign = opt.align || 'left'; g.textBaseline = 'alphabetic'; g.letterSpacing = (opt.ls || 0) + 'px'; g.fillText(s, x, y); g.letterSpacing = '0px'; }
+function tw(g, s, size, ls = 0, w = 400) { g.font = `${w} ${size}px ${SERIF}`; g.letterSpacing = ls + 'px'; const m = g.measureText(s).width; g.letterSpacing = '0px'; return m; }
+
+// ---------- Kamera ----------
+let CX = 0, CY = 0, CZ = 1;
+const S = (x, y) => [(x - CX) * CZ + W / 2, (y - CY) * CZ + H / 2];
+const KUN = [640, -240], SIE = [-640, 250], VZ = [-3600, 1500];
+function camAt(t) {
+  const k = [
+    [0, 600, -235, 2.6], [K.sonst - .3, 600, -235, 2.6], [K.sonst + .2, 20, -10, .64], [K.post - .5, 70, -30, .67],
+    [K.post - .02, -1500, 700, .265], [K.ueberm + .34, -1400, 650, .28], [K.ueber - .06, VZ[0] + 10, VZ[1] - 10, 1.45], [K.stadtbote - .62, VZ[0] + 60, VZ[1] + 10, 1.55],
+    [K.stadtbote - .3, -1500, 700, .3], [K.stadtbote - .04, 0, -10, .64], [K.direkt + .25, 30, -20, .67], [K.abgeholt - .03, SIE[0] + 120, SIE[1] - 20, 1.3], [K.quer - .27, SIE[0] + 160, SIE[1] - 50, 1.38],
+    [K.stadt - .16, 'F'], [K.umweg - .33, 20, -10, .63], [K.halb - .37, 40, -20, .66], [K.halb - .02, KUN[0] - 80, KUN[1] + 10, 1.3], [K.da + .03, KUN[0] - 40, KUN[1] + 20, 1.42], [K.mit, KUN[0], KUN[1] + 10, 3.2],
+    [K.auftrag2 - .38, KUN[0] + 60, KUN[1] + 30, 4.8], [K.auftrag2 - .02, 150, -60, .7], [K.name - .31, 170, -70, .74], [K.name, 420, -160, .78], [DUR, -560, 180, .95]];
+  // Abschnitt „quer durch die Stadt“: Kamera folgt dem Kurier
+  if (t >= K.quer - .27 && t < K.stadt - .16) { const a = camAt(K.quer - .271), c = courierPos(t), k2 = eio(lin(t, K.quer - .27, K.quer)); return [mix(a[0], c[0] + 60, k2), mix(a[1], c[1], k2), mix(a[2], 1.12, k2)]; }
+  let i = 0; while (i < k.length - 2 && k[i + 1][0] <= t) i++;
+  let A = k[i], B = k[i + 1];
+  if (A[1] === 'F') { const c = courierPos(K.stadt - .16); A = [K.stadt - .16, c[0] + 60, c[1], 1.12]; }
+  const u = eio(lin(t, A[0], B[0]));
+  return [mix(A[1], B[1], u), mix(A[2], B[2], u), Math.exp(mix(Math.log(A[3]), Math.log(B[3]), u))];
+}
+function setCam(t) { const c = camAt(t); CZ = c[2] * (1 + .012 * Math.sin(t * .55)); CX = c[0] + 16 * Math.sin(t * .41) / CZ; CY = c[1] + 10 * Math.sin(t * .33 + 1) / CZ; }
+
+// ---------- Welt ----------
+const rx = y => 150 + 170 * Math.sin((y + 260) / 640) + 40 * Math.sin(y / 230);   // Fluss-Mittellinie
+const RW = 62;
+let U140 = .64, CLEAR = [], AREA = [], AREA_EDGE = [], STREETS = [], HOUSES = [], RIVER_L, RIVER_R, BLOCKS = [], TREES = [], PARKS = [], ROADS = [], FIELDS = [], TOWNS = [], LABELS = [], FORT, BRIDGES = [], DIRECT, DETOUR, VZB = {};
+const warp = (x, y) => [x + 34 * Math.sin(y / 410 + 1.3) + 14 * Math.sin(x / 230), y + 26 * Math.sin(x / 380 + .4) + 12 * Math.sin(y / 190)];
+const inCity = (x, y) => Math.pow((x + 40) / 1300, 2) + Math.pow((y + 20) / 760, 2) + .14 * vn(x / 300 + y / 500, 5);
+const ALT = [-430, -130];
+const DET1 = [SIE, [-820, 300], [-1150, 330], [-1900, 480], [-2800, 700], [-3700, 950], [-4250, 1200], [-4300, 1460], [VZ[0] - 360, VZ[1] - 10], [VZ[0] - 300, VZ[1]]];
+const DET2 = [[VZ[0] + 300, VZ[1] + 20], [VZ[0] + 380, VZ[1] + 30], [-2700, 1560], [-1800, 1380], [-900, 1080], [-100, 860], [rx(540) - RW - 60, 560], [rx(540) + RW + 60, 530], [720, 250], [KUN[0] + 30, KUN[1] + 60], [KUN[0] + 6, KUN[1] + 22]];
+function buildWorld() {
+  const R = rng(7);
+  // Fluss
+  const ys = []; for (let y = -3200; y <= 3600; y += 30) ys.push(y);
+  RIVER_L = wob(ys.map(y => [rx(y) - RW, y]), 5, 11, 8); RIVER_R = wob(ys.map(y => [rx(y) + RW, y]), 5, 12, 8);
+  DIRECT = poly(wob(chaikin([SIE, [-520, 225], [-360, 160], [-170, 80], [40, 8], [rx(-22) - RW - 10, -22], [rx(-22) + RW + 10, -26], [330, -70], [470, -150], [KUN[0] - 18, KUN[1] + 8]], 3), 4, 51, 6, 60));
+  const DETP = poly(chaikin(DET1.slice(0, 4), 3));
+  const nearPath = (Q, x, y, r) => { for (let i = 0; i < Q.p.length; i += 2) if (Math.hypot(Q.p[i][0] - x, Q.p[i][1] - y) < r) return true; return false; };
+  // Straßenraster -> Blöcke
+  const gx = [], gy = []; for (let x = -1900; x <= 1900; x += 150) gx.push(x + (R() - .5) * 40); for (let y = -1200; y <= 1200; y += 116) gy.push(y + (R() - .5) * 30);
+  for (let i = 0; i < gx.length - 1; i++) for (let j = 0; j < gy.length - 1; j++) {
+    const sx = (i % 4 === 1) ? 22 : 12, sy = (j % 3 === 2) ? 20 : 11;
+    const x0 = gx[i] + sx, x1 = gx[i + 1] - sx, y0 = gy[j] + sy, y1 = gy[j + 1] - sy, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const c = inCity(cx, cy); if (c > 1.05 + R() * .25) continue;
+    if (Math.abs(cx - rx(cy)) < RW + 95) continue;
+    if (Math.hypot(cx - ALT[0], (cy - ALT[1]) * 1.3) < 420 && Math.hypot(cx - ALT[0], (cy - ALT[1]) * 1.3) > 330) continue; // Wallring
+    const inAlt = Math.hypot(cx - ALT[0], (cy - ALT[1]) * 1.3) < 330;
+    if (!inAlt) continue;
+    const subs = inAlt ? [[x0, y0, cx - 5, cy - 5], [cx + 5, y0, x1, cy - 5], [x0, cy + 5, cx - 5, y1], [cx + 5, cy + 5, x1, y1]] : [[x0, y0, x1, y1]];
+    for (const s of subs) {
+      { const cs = [[(s[0] + s[2]) / 2, (s[1] + s[3]) / 2, 60], [s[0], s[1], 36], [s[2], s[1], 36], [s[0], s[3], 36], [s[2], s[3], 36]].map(c => [...warp(c[0], c[1]), c[2]]); if (cs.some(c => nearPath(DIRECT, c[0], c[1], c[2]) || nearPath(DETP, c[0], c[1], c[2]))) continue; }
+      const q = []; const e = (a, b) => { for (let k = 0; k < 3; k++) q.push(warp(mix(a[0], b[0], k / 3), mix(a[1], b[1], k / 3))); };
+      e([s[0], s[1]], [s[2], s[1]]); e([s[2], s[1]], [s[2], s[3]]); e([s[2], s[3]], [s[0], s[3]]); e([s[0], s[3]], [s[0], s[1]]);
+      const jq = q.map(p => [p[0] + (R() - .5) * 5, p[1] + (R() - .5) * 5]);
+      BLOCKS.push({ alt: inAlt, q: jq, c: warp(cx, cy), ang: R() < .5 ? .785 : -.785, d: 0, seed: (R() * 1e6) | 0, tone: .8 + R() * .4 });
+    }
+  }
+  // Bäume in Parks und Wäldern (Kreis mit zwei Punkten wie im Original)
+  for (const p of PARKS) { const n = 9 + (R() * 6 | 0); for (let k = 0; k < n; k++) { const x = mix(p[0], p[2], R()), y = mix(p[1], p[3], R()); const w = warp(x, y); TREES.push([w[0], w[1], 9 + R() * 6, R() * 6.28]); } }
+  const RF = rng(99);
+  for (let k = 0; k < 5200; k++) { const x = -6200 + RF() * 11400, y = -3400 + RF() * 7200; const c = inCity(x, y); if (c < 1.35) continue;
+    if (Math.abs(x - rx(y)) < RW + 30) continue; const f = vn(x / 900, 3) + vn(y / 700, 4) * .8 + (Math.hypot(x - VZ[0], y - VZ[1]) < 1100 ? .5 : 0); if (f < .15) continue; if (Math.hypot(x - VZ[0], y - VZ[1]) < 400) continue;
+    TREES.push([x, y, 13 + RF() * 10, RF() * 6.28]); }
+  const L1 = chaikin(DET1, 3), L2 = chaikin(DET2, 3);
+  const Lin = [[VZ[0] - 300, VZ[1]], [VZ[0] + 300, VZ[1] + 20]];
+  DETOUR = poly(wob(L1.concat(Lin, L2), 6, 52, 10, 80));
+  // V7: „140 km“ an die Stelle der Geisterlinie, die in der Stadtansicht sichtbar ist (südlich des Flusses)
+  { let best = 1e9; for (let u = .5; u <= .999; u += .001) { const q = ptAt(DETOUR, u), d = Math.hypot(q[0] - 600, q[1] - 490); if (d < best) { best = d; U140 = u; } } }
+  // Wald rund um die Lichtung des Verteilzentrums (wie Freeman's Farm)
+  CLEAR = wob(Array.from({ length: 41 }, (_, k) => { const an = k / 40 * Math.PI * 2; return [VZ[0] + Math.cos(an) * (470 + 40 * vn(k * .7, 61)), VZ[1] + Math.sin(an) * (330 + 30 * vn(k * .7, 62))]; }), 4, 63, 10, 60);
+  for (let k = 0; k < 1400; k++) { const an = RF() * 6.28, d = 1.08 + RF() * 1.6, x = VZ[0] + Math.cos(an) * 480 * d, y = VZ[1] + Math.sin(an) * 345 * d; if (nearPath(DETOUR, x, y, 55)) continue; TREES.push([x, y, 11 + RF() * 9, RF() * 6.28]); }
+  // Felder (gestrichelte Parzellen)
+  for (let k = 0; k < 140; k++) { const x = -6000 + RF() * 11000, y = -3200 + RF() * 6800; if (inCity(x, y) < 1.5) continue; if (Math.abs(x - rx(y)) < RW + 200) continue; if (Math.hypot(x - VZ[0], y - VZ[1]) < 600) continue;
+    const w = 220 + RF() * 300, h = 150 + RF() * 200, a = (RF() - .5) * .6; FIELDS.push({ x, y, w, h, a, s: (RF() * 1e5) | 0 }); }
+  // Altstadt-Wall mit Bastionen (Zickzack wie Bemis Heights)
+  const fw = []; const NB = 11; for (let k = 0; k <= NB * 2; k++) { const a = k / (NB * 2) * Math.PI * 2, r = k % 2 ? 372 : 418; fw.push([ALT[0] + Math.cos(a) * r, ALT[1] + Math.sin(a) * r / 1.3]); }
+  FORT = wob(fw, 3, 21, 6, 30);
+  // Straßen: Hauptstraßen als Doppellinie, Nebenstraßen als feine Einzellinie; Häuser nur als kleine Rechtecke an den Straßen
+  const bx = y => rx(y);
+  const main = [
+    [[ALT[0] - 470, ALT[1] + 20], [-900, -90], [-1350, -40]], [[ALT[0] - 330, ALT[1] - 260], [-980, -560], [-1180, -760]], [[ALT[0] + 10, ALT[1] - 320], [-380, -600], [-460, -820]],
+    [[ALT[0] - 300, ALT[1] + 270], [-900, 330], [-1250, 480]], [[ALT[0] + 20, ALT[1] + 320], [-520, 520], [-620, 800]], [[ALT[0] + 330, ALT[1] + 230], [-150, 330], [40, 560], [bx(540) - RW - 30, 540]],
+    [[ALT[0] + 300, ALT[1] - 230], [-100, -480], [bx(-620) - RW - 30, -620]],
+    [[bx(-620) + RW + 30, -620], [500, -660], [900, -690], [1300, -720]], [[bx(-22) + RW + 30, -26], [330, -70], [470, -150], [KUN[0], KUN[1]], [900, -330], [1300, -420]],
+    [[bx(540) + RW + 30, 530], [700, 560], [1000, 600], [1300, 640]],
+    [[480, -800], [520, -400], [560, 0], [620, 380], [700, 800]], [[980, -800], [1020, -300], [1040, 200], [1060, 800]],
+    ys.filter(y => y > -800 && y < 800).map(y => [bx(y) - RW - 34, y])];
+  const minor = [[[bx(-350) + RW + 30, -350], [700, -330], [1300, -300]], [[bx(250) + RW + 30, 250], [800, 260], [1300, 280]], [[-1300, 200], [-950, 120], [ALT[0] - 380, ALT[1] + 180]],
+    [[-1300, -380], [-950, -330], [ALT[0] - 440, ALT[1] - 120]], [[-200, 700], [-80, 250], [bx(0) - RW - 34, 60]], [[-900, 700], [-760, 420], [-640, 250]], [[300, -800], [bx(-760) + RW + 40, -760]], [[800, -100], [1300, -60]]];
+  STREETS = main.map((p, i) => ({ p: wob(chaikin(p, 3), 4, 200 + i, 8, 70), main: true })).concat(minor.map((p, i) => ({ p: wob(chaikin(p, 3), 4, 300 + i, 8, 70), main: false })));
+  STREETS.push({ p: wob(Array.from({ length: 49 }, (_, k) => { const an = k / 48 * Math.PI * 2; return [ALT[0] + Math.cos(an) * 490, ALT[1] + Math.sin(an) * 490 / 1.3]; }), 3, 400, 8, 60), main: true });
+  const RH = rng(17);
+  for (const st of STREETS) { const q = resample(st.p, 34); for (let i = 1; i < q.length - 1; i++) for (const side of [-1, 1]) { if (RH() < (st.main ? .45 : .6)) continue;
+    const a0 = Math.atan2(q[i + 1][1] - q[i - 1][1], q[i + 1][0] - q[i - 1][0]), off = (st.main ? 26 : 18) + RH() * 6, x = q[i][0] - Math.sin(a0) * off * side, y = q[i][1] + Math.cos(a0) * off * side;
+    if (inCity(x, y) > 1.02 || Math.abs(x - rx(y)) < RW + 26) continue; const dA = Math.hypot(x - ALT[0], (y - ALT[1]) * 1.3); if (dA < 440) continue;
+    if (nearPath(DIRECT, x, y, 24) || Math.hypot(x - KUN[0], y - KUN[1]) < 60 || Math.hypot(x - SIE[0], y - SIE[1]) < 50) continue;
+    const w = 16 + RH() * 14, h = 10 + RH() * 7, c = Math.cos(a0), sn = Math.sin(a0); HOUSES.push([[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(p => [x + p[0] * c - p[1] * sn, y + p[0] * sn + p[1] * c])); } }
+  { const bank = ys.filter(y => y > -620 && y < 560).map(y => [rx(y) + RW, y]); AREA_EDGE = wob(chaikin([[rx(560) + RW, 560], [700, 600], [1050, 620], [1240, 380], [1270, -100], [1220, -560], [900, -660], [rx(-620) + RW, -640]], 3), 7, 501, 8, 50); AREA = bank.concat(AREA_EDGE); }
+  // Parks
+  for (const [px, py, pr] of [[-950, -470, 150], [880, 380, 130], [-180, 560, 110], [1100, -520, 120], [-1150, 250, 100]]) for (let k = 0; k < 26; k++) { const an = RH() * 6.28, d = Math.sqrt(RH()) * pr; TREES.push([px + Math.cos(an) * d * 1.3, py + Math.sin(an) * d, 10 + RH() * 6, RH() * 6.28]); }
+  // Brücken
+  for (const y of [-620, -22, 540]) { const x = rx(y); BRIDGES.push([x, y]); }
+  // Überlandstraßen (Doppellinie)
+  const road = (pts, s) => ROADS.push({ p: wob(chaikin(pts, 3), 6, s, 10, 90), s });
+  road(DET1.slice(2), 31); road(DET2.slice(0, -3), 32);
+  road([[1500, 300], [2300, 700], [3300, 1300], [4600, 1900]], 33);
+  road([[1200, -800], [1900, -1500], [2600, -2400], [3300, -3300]], 34);
+  road([[-1700, -200], [-2600, -500], [-3700, -700], [-5200, -800]], 35);
+  road([[0, 1150], [-300, 1800], [-700, 2600], [-900, 3400]], 36);
+  road([[VZ[0] - 280, VZ[1]], [-4600, 2500], [-5600, 3000]], 37);
+  // Dörfer
+  for (const [x, y] of [[-2700, -560], [2500, 820], [-600, 2500], [2100, -1700], [-4800, 2700], [3500, 1400], [-3000, 1250]]) { const n = 6 + (RF() * 5 | 0); const b = [];
+    for (let k = 0; k < n; k++) { const bx = x + (RF() - .5) * 200, by = y + (RF() - .5) * 140, w = 34 + RF() * 40, h = 24 + RF() * 30; b.push([[bx, by], [bx + w, by], [bx + w, by + h], [bx, by + h]]); } TOWNS.push(b); }
+  // Routen
+  // Verteilzentrum: Grundriss
+  VZB = { x: VZ[0], y: VZ[1], w: 600, h: 330 };
+  // Beschriftungen [Text, x, y, Größe, zMin, zMax, Farbe, Laufweite]
+  LABELS = [['ALTSTADT', ALT[0], ALT[1] + 8, 24, .45, 9], ['WESTSTADT', -1100, 110, 23, .45, 9], ['NORDSTADT', 250, -880, 23, .45, 9], ['HAFEN', 470, 700, 23, .45, 9],
+    ['STADTPARK', -950, -470, 18, .45, 9], ['SÜDSTADT', -420, 660, 23, .45, 9], ['OSTSTADT', 1180, 60, 23, .45, 9],
+    ['STADT', -60, -60, 30, 0, .45], ['VERTEILZENTRUM', VZ[0], VZ[1] - 250, 26, 0, 9]];
+}
+
+// ---------- Zeichenhelfer ----------
+function pathS(g, pts, close = false) { g.beginPath(); pts.forEach((p, i) => { const s = S(p[0], p[1]); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); if (close) g.closePath(); }
+function inkLine(g, pts, prog, wpx, col, alpha = 1) { if (prog <= 0) return; const n = Math.max(2, Math.ceil(pts.length * clamp(prog))); g.save(); g.globalAlpha *= alpha; g.strokeStyle = col; g.lineWidth = wpx; g.lineJoin = g.lineCap = 'round'; pathS(g, pts.slice(0, n)); g.stroke(); g.restore(); }
+function visible(x, y, r) { const s = S(x, y), rr = r * CZ; return s[0] > -rr && s[0] < W + rr && s[1] > -rr && s[1] < H + rr; }
+const lw = base => base * Math.pow(CZ / .65, .45);   // Linienstärke wächst leicht mit dem Zoom
+
+// Pinselroute: rauer, gefüllter Strich mit Widerhaken-Pfeil (Hauptmerkmal des Originals)
+function brush(g, Pl, u0, u1, wpx, col, seed, opt = {}) {
+  if (u1 - u0 <= .0005) return;
+  const sub = subPts(Pl, u0, u1).map(p => S(p[0], p[1]));
+  const pts = resample(sub, 3); if (pts.length < 2) return;
+  const Lp = poly(pts), L = Lp.len, head = opt.arrow === false ? 0 : Math.min(wpx * 1.5, L * .4);
+  const left = [], right = [];
+  for (let i = 0; i < pts.length; i++) {
+    const d = Lp.L[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const dw = u0 * Pl.len * CZ + d;
+    let hw = wpx / 2 * (.86 + .14 * vn(dw / 38, seed)) * Math.min(1, .55 + d / (wpx * 1.6));
+    if (head && d > L - head) hw *= .62;
+    const r1 = .9 * vn(dw / 3.1, seed + 3), r2 = .9 * vn(dw / 2.7, seed + 4);
+    left.push([pts[i][0] - Math.sin(ang) * (hw + r1), pts[i][1] + Math.cos(ang) * (hw + r1)]);
+    right.push([pts[i][0] + Math.sin(ang) * (hw + r2), pts[i][1] - Math.cos(ang) * (hw + r2)]);
+  }
+  g.save(); g.globalAlpha *= (opt.alpha ?? 1);
+  g.fillStyle = col; g.beginPath(); left.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); for (let i = right.length - 1; i >= 0; i--) g.lineTo(right[i][0], right[i][1]); g.closePath(); g.fill();
+  // Trockenpinsel: hellere Schlieren im Strich
+  g.globalAlpha *= .22; g.strokeStyle = '#E8C9B8'; g.lineWidth = Math.max(1, wpx * .09); g.lineCap = 'round';
+  for (let s = 0; s < 2; s++) { g.beginPath(); let on = false; for (let i = 0; i < pts.length; i++) { const dw = u0 * Pl.len * CZ + Lp.L[i]; const v = vn(dw / 22, seed + 20 + s);
+      const k = s ? .28 : -.18; const p = [mix(left[i][0], right[i][0], .5 + k), mix(left[i][1], right[i][1], .5 + k)];
+      if (v > .35 && Lp.L[i] < L - head) { on ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); on = true; } else on = false; } g.stroke(); }
+  g.restore();
+  if (head) { const e = pts[pts.length - 1], q = pts[Math.max(0, pts.length - 1 - Math.ceil(head / 3))], ang = Math.atan2(e[1] - q[1], e[0] - q[0]);
+    const ca = Math.cos(ang), sa = Math.sin(ang), hl = wpx * 1.55, hwid = wpx * .95;
+    const tip = [e[0] + ca * wpx * .5, e[1] + sa * wpx * .5], bl = [tip[0] - ca * hl - sa * hwid, tip[1] - sa * hl + ca * hwid], br = [tip[0] - ca * hl + sa * hwid, tip[1] - sa * hl - ca * hwid], nt = [tip[0] - ca * hl * .62, tip[1] - sa * hl * .62];
+    g.save(); g.globalAlpha *= (opt.alpha ?? 1); g.fillStyle = col; g.beginPath(); g.moveTo(tip[0], tip[1]); g.lineTo(bl[0], bl[1]); g.lineTo(nt[0], nt[1]); g.lineTo(br[0], br[1]); g.closePath(); g.fill(); g.restore(); }
+}
+// Einheiten-Block wie im Original (gestapelte Balken, rot = Stadtbote, blau = Post)
+function unit(g, x, y, col, colD, a = 1, sc = 1, rows = 2) {
+  if (a <= 0) return; const s = S(x, y), w = 44 * sc, h = 11 * sc; g.save(); g.globalAlpha *= a;
+  for (let r = 0; r < rows; r++) { const yy = s[1] - rows * h * .62 + r * h * 1.24; g.fillStyle = col; g.fillRect(s[0] - w / 2, yy, w, h); g.strokeStyle = colD; g.lineWidth = 1.4; g.strokeRect(s[0] - w / 2, yy, w, h);
+    g.globalAlpha *= .5; g.beginPath(); for (let k = -h; k < w; k += 5 * sc) { g.moveTo(s[0] - w / 2 + k, yy + h); g.lineTo(s[0] - w / 2 + k + h, yy); } g.save(); g.beginPath(); g.rect(s[0] - w / 2, yy, w, h); g.clip(); g.restore(); g.globalAlpha /= .5; }
+  g.restore(); }
+function hatchRect(g, x, y, w, h, col, sp, a = 1, ang = 1) { g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip(); g.strokeStyle = col; g.globalAlpha *= a; g.lineWidth = 1; g.beginPath();
+  for (let k = -h - w; k < w + h; k += sp) { g.moveTo(x + k, y + (ang > 0 ? h : 0)); g.lineTo(x + k + h, y + (ang > 0 ? 0 : h)); } g.stroke(); g.restore(); }
+function courierUnit(g, x, y, a = 1, sc = 1, col = P.red) { if (a <= 0) return; const s = S(x, y), w = 50 * sc, h = 17 * sc; g.save(); g.globalAlpha *= a;
+  g.fillStyle = 'rgba(214,160,145,.9)'; g.fillRect(s[0] - w / 2, s[1] - h / 2, w, h); hatchRect(g, s[0] - w / 2 - 6 * sc, s[1] - h / 2, w + 12 * sc, h, col, 4.2 * sc, .95);
+  g.strokeStyle = col; g.lineWidth = 1.8 * sc; g.strokeRect(s[0] - w / 2, s[1] - h / 2, w, h); g.restore(); }
+function postUnit(g, x, y, a = 1, sc = 1) { if (a <= 0) return; const s = S(x, y), w = 50 * sc, h = 17 * sc; g.save(); g.globalAlpha *= a;
+  g.fillStyle = '#9BA3B0'; g.fillRect(s[0] - w / 2, s[1] - h / 2, w, h); g.strokeStyle = '#3F4A5E'; g.lineWidth = 1.6 * sc; g.strokeRect(s[0] - w / 2, s[1] - h / 2, w, h);
+  g.beginPath(); g.moveTo(s[0] - w / 2, s[1]); g.lineTo(s[0] + w / 2, s[1]); g.globalAlpha *= .5; g.stroke(); g.restore(); }
+function target(g, x, y, a, t, pulse = 0) { if (a <= 0) return; const s = S(x, y), sc = clamp(CZ / .65, .7, 1.7); g.save(); g.globalAlpha *= a; g.strokeStyle = P.red; g.lineWidth = 2.2;
+  const k = eo(a); g.beginPath(); g.arc(s[0], s[1], 26 * sc * k, 0, 7); g.stroke(); g.beginPath(); g.arc(s[0], s[1], 15 * sc * k, 0, 7); g.stroke(); g.fillStyle = P.red; g.beginPath(); g.arc(s[0], s[1], 3.4 * sc, 0, 7); g.fill();
+  g.lineWidth = 1.2; g.globalAlpha *= .7; for (let q = 0; q < 4; q++) { const an = q * Math.PI / 2; g.beginPath(); g.moveTo(s[0] + Math.cos(an) * 30 * sc, s[1] + Math.sin(an) * 30 * sc); g.lineTo(s[0] + Math.cos(an) * 40 * sc, s[1] + Math.sin(an) * 40 * sc); g.stroke(); }
+  if (pulse > 0 && pulse < 1) { g.globalAlpha = a * (1 - pulse) * .8; g.lineWidth = 2; g.beginPath(); g.arc(s[0], s[1], (30 + 60 * pulse) * sc, 0, 7); g.stroke(); }
+  g.restore(); }
+function office(g, x, y, a) { if (a <= 0) return; const s = S(x, y), r = 11 * clamp(CZ / .65, .8, 1.7); g.save(); g.globalAlpha *= a; g.strokeStyle = P.inkD; g.lineWidth = 2; g.fillStyle = P.paperL;
+  g.fillRect(s[0] - r, s[1] - r, 2 * r, 2 * r); g.strokeRect(s[0] - r, s[1] - r, 2 * r, 2 * r); g.beginPath(); g.moveTo(s[0] - r, s[1] - r); g.lineTo(s[0] + r, s[1] + r); g.moveTo(s[0] + r, s[1] - r); g.lineTo(s[0] - r, s[1] + r); g.stroke(); g.restore(); }
+function capsLabel(g, s, x, y, size, a, col = P.lab, align = 'left', ls = null) { if (a <= 0) return; g.save(); g.globalAlpha *= a; txt(g, s, x, y + (1 - a) * 5, size, col, { align, ls: ls ?? size * .16 }); g.restore(); }
+function blot(g, x, y, r, k, seed) { if (k <= 0) return; const s = S(x, y), rr = r * k; g.save(); g.fillStyle = P.blot; g.globalAlpha *= .9; g.beginPath();
+  for (let i = 0; i <= 40; i++) { const a = i / 40 * Math.PI * 2, q = rr * (1 + .28 * vn(i * .6, seed) + .12 * vn(i * 2.1, seed + 1)); i ? g.lineTo(s[0] + Math.cos(a) * q, s[1] + Math.sin(a) * q) : g.moveTo(s[0] + Math.cos(a) * q, s[1] + Math.sin(a) * q); } g.closePath(); g.fill();
+  const R = rng(seed); for (let i = 0; i < 9; i++) { const a = R() * 6.28, d = rr * (1.2 + R() * 1.1), q = rr * (.06 + R() * .12) * k; g.beginPath(); g.arc(s[0] + Math.cos(a) * d, s[1] + Math.sin(a) * d, q, 0, 7); g.fill(); }
+  g.restore(); }
+
+// ---------- Papier ----------
+let PAPER, FIBER, LAY;
+function buildPaper() {
+  LAY = mk(W, H); PAPER = mk(W, H); const g = PAPER.getContext('2d'), im = g.createImageData(W, H), d = im.data, R = rng(3);
+  const base = [230, 217, 190];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const m = 3 * vn(x / 170 + vn(y / 260, 2) * 1.3, 1) + 2 * vn(y / 90 + x / 400, 7) + 1.4 * vn(x / 40 + y / 55, 8);
+    const gr = (R() + R() - 1) * 7, line = (y % 3 === 0) ? -1.6 : 0;
+    const dx = (x - W / 2) / (W / 2), dy = (y - H / 2) / (H / 2), v = -9 * Math.pow(Math.min(1, Math.hypot(dx * .9, dy)), 2.2);
+    const i = (y * W + x) * 4; d[i] = base[0] + m + gr + line + v; d[i + 1] = base[1] + m * .95 + gr + line + v * 1.05; d[i + 2] = base[2] + m * .8 + gr * .9 + line + v * 1.2; d[i + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  // Fasern
+  g.globalAlpha = .05; g.strokeStyle = '#7A6545'; g.lineWidth = .8; for (let k = 0; k < 900; k++) { const x = R() * W, y = R() * H, a = R() * 6.28, l = 6 + R() * 18; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a) * l * .5 + 3, y + Math.sin(a) * l * .5, x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); }
+  g.globalAlpha = 1;
+  FIBER = mk(W, H); const f = FIBER.getContext('2d'), im2 = f.createImageData(W, H), e = im2.data, R2 = rng(5);
+  for (let i = 0; i < W * H; i++) { const v = 255 - Math.max(0, (R2() - .55)) * 60; e[i * 4] = v; e[i * 4 + 1] = v; e[i * 4 + 2] = v - 3; e[i * 4 + 3] = 255; } f.putImageData(im2, 0, 0);
+}
+
+// ---------- Karte ----------
+function mapReveal(t, x, y) { const A = lin(t, K.kunden - .35, K.sonst + .4), d = Math.hypot(x - KUN[0], y - KUN[1]) / 2300; const a = clamp((A * 1.6 - d) / .45);
+  if (Math.hypot(x, y) < 2200) return a; const B = lin(t, K.post - .55, K.post - .02), d2 = (Math.hypot(x + 1500, y - 800) - 1200) / 4200; return Math.min(a > 0 ? 1 : 0, 1) * 0 + clamp((B * 1.5 - d2) / .5); }
+function drawMap(g, t) {
+  const sc = CZ, detail = lin(CZ, .36, .52);
+  // Fluss
+  const Lr = mapReveal(t, rx(0), 0) > 0 ? 1 : 0;
+  {
+    const top = -CY - H / 2 / CZ - 400, bot = CY + H / 2 / CZ + 400; // grob
+    const L = RIVER_L.filter(p => p[1] > CY - H / CZ && p[1] < CY + H / CZ), Rr = RIVER_R.filter(p => p[1] > CY - H / CZ && p[1] < CY + H / CZ);
+    if (L.length > 2) {
+      const rp = clamp(lin(t, K.kunden - .35, K.sonst + .25) * 1.2);
+      g.save(); pathS(g, L.concat(Rr.slice().reverse()), true); g.fillStyle = P.water; g.globalAlpha = rp; g.fill(); g.clip();
+      // Wasserschraffur: waagrechte feine Linien, weltfest
+      const sp = 7 * CZ < 3 ? 14 : 7; g.strokeStyle = P.ink; g.lineWidth = 1; g.globalAlpha = rp * (.16 + .08 * detail); g.beginPath();
+      const y0 = Math.floor((CY - H / 2 / CZ) / sp) * sp; for (let y = y0; y < CY + H / 2 / CZ; y += sp) { const s = S(0, y)[1]; const xm = rx(y); const a = S(xm - RW + 8 + 14 * vn(y / 30, 4), y)[0], b = S(xm + RW - 8 - 14 * vn(y / 33, 6), y)[0]; if (b - a > 6) { g.moveTo(a, s); g.lineTo(b, s); } }
+      g.stroke(); g.restore();
+      const n1 = Math.ceil(L.length * rp);
+      inkLine(g, L.slice(0, n1), 1, lw(2.1), P.ink, .9); inkLine(g, Rr.slice(0, n1), 1, lw(2.1), P.ink, .9);
+      // zweite, feinere Uferlinie
+      g.save(); g.translate(0, 0); inkLine(g, L.slice(0, n1).map(p => [p[0] - 9, p[1]]), 1, lw(.8), P.ink, .35); inkLine(g, Rr.slice(0, n1).map(p => [p[0] + 9, p[1]]), 1, lw(.8), P.ink, .35); g.restore();
+    }
+  }
+  // Felder
+  for (const f of FIELDS) { if (!visible(f.x, f.y, 500)) continue; const a = mapReveal(t, f.x, f.y); if (a <= 0) continue; g.save(); g.globalAlpha = a * .55; g.strokeStyle = P.ink; g.lineWidth = 1; g.setLineDash([5, 5]);
+    const c = Math.cos(f.a), s = Math.sin(f.a), pts = [[-f.w / 2, -f.h / 2], [f.w / 2, -f.h / 2], [f.w / 2, f.h / 2], [-f.w / 2, f.h / 2]].map(p => [f.x + p[0] * c - p[1] * s, f.y + p[0] * s + p[1] * c]);
+    pathS(g, pts, true); g.stroke(); g.setLineDash([]); const R = rng(f.s); g.fillStyle = P.ink; g.globalAlpha = a * .35; for (let k = 0; k < 18; k++) { const u = R() - .5, v = R() - .5, q = S(f.x + u * f.w * c - v * f.h * s, f.y + u * f.w * s + v * f.h * c); g.fillRect(q[0], q[1], 1.6, 1.6); } g.restore(); }
+  // Überlandstraßen
+  for (const r of ROADS) { const a = mapReveal(t, r.p[0][0], r.p[0][1]); const a2 = mapReveal(t, r.p[r.p.length - 1][0], r.p[r.p.length - 1][1]); const pr = Math.max(a, a2);
+    if (pr <= 0) continue; inkLine(g, r.p.map(p => [p[0] - 7, p[1] - 5]), pr, lw(1.3), P.ink, .75); inkLine(g, r.p.map(p => [p[0] + 7, p[1] + 5]), pr, lw(1.3), P.ink, .75); }
+  // Dörfer
+  for (const tn of TOWNS) { const c = tn[0][0]; if (!visible(c[0], c[1], 300)) continue; const a = mapReveal(t, c[0], c[1]); if (a <= 0) continue;
+    for (const b of tn) { g.save(); g.globalAlpha = a; pathS(g, b, true); g.fillStyle = 'rgba(190,170,135,.5)'; g.fill(); g.strokeStyle = P.ink; g.lineWidth = 1; g.stroke(); g.restore(); } }
+  // Straßen
+  for (const st of STREETS) { const m = st.p[Math.floor(st.p.length / 2)]; const a = Math.max(mapReveal(t, st.p[0][0], st.p[0][1]), mapReveal(t, m[0], m[1])); if (a <= 0) continue;
+    if (st.main) { const o = 7; const off = (p, i, arr, sg) => { const q = arr[Math.max(0, i - 1)], r = arr[Math.min(arr.length - 1, i + 1)], an = Math.atan2(r[1] - q[1], r[0] - q[0]); return [p[0] - Math.sin(an) * o * sg, p[1] + Math.cos(an) * o * sg]; };
+      inkLine(g, st.p.map((p, i, arr) => off(p, i, arr, 1)), a, lw(1.15), P.ink, .8); inkLine(g, st.p.map((p, i, arr) => off(p, i, arr, -1)), a, lw(1.15), P.ink, .8); }
+    else inkLine(g, st.p, a, lw(.9), P.ink, .55); }
+  // Häuser
+  for (const hq of HOUSES) { const c = hq[0]; if (!visible(c[0], c[1], 60)) continue; const a = mapReveal(t, c[0], c[1]); if (a <= 0) continue; g.save(); g.globalAlpha = a * .85; pathS(g, hq, true); g.fillStyle = 'rgba(160,140,108,.35)'; g.fill(); g.strokeStyle = P.ink; g.globalAlpha = a * .7; g.lineWidth = .9; g.stroke(); g.restore(); }
+  // Blöcke
+  for (const b of BLOCKS) { if (!visible(b.c[0], b.c[1], 200)) continue; const a = mapReveal(t, b.c[0], b.c[1]); if (a <= 0) continue;
+    g.save(); pathS(g, b.q, true); g.globalAlpha = a; g.fillStyle = `rgba(205,188,152,${(b.alt ? .42 : .2) * b.tone})`; g.fill();
+    if (detail > 0) { g.clip(); const s = S(b.c[0], b.c[1]), sp = 6.5 * CZ, R = 95 * CZ; g.strokeStyle = P.ink; g.lineWidth = Math.max(.7, .9 * Math.pow(CZ / .65, .3)); g.globalAlpha = a * (b.alt ? .42 : .2) * detail * b.tone; g.beginPath();
+      const n = Math.ceil(R * 2 / sp), m = Math.ceil(n * a); for (let k = 0; k < m; k++) { const o = -R + k * sp; if (b.ang > 0) { g.moveTo(s[0] + o - R, s[1] + R); g.lineTo(s[0] + o + R, s[1] - R); } else { g.moveTo(s[0] + o - R, s[1] - R); g.lineTo(s[0] + o + R, s[1] + R); } } g.stroke(); }
+    g.restore(); g.save(); g.globalAlpha = a * .72; g.strokeStyle = P.ink; g.lineWidth = lw(1.05); g.lineJoin = 'round'; pathS(g, b.q, true); g.stroke(); g.restore(); }
+  // Wall
+  { const a = mapReveal(t, ALT[0], ALT[1]); if (a > 0) { inkLine(g, FORT, a, lw(1.8), P.inkD, .9); inkLine(g, FORT.map(p => [ALT[0] + (p[0] - ALT[0]) * 1.06, ALT[1] + (p[1] - ALT[1]) * 1.06]), a, lw(.9), P.ink, .55);
+    // Zähnchen außen am Wall
+    g.save(); g.globalAlpha = a * .6; g.strokeStyle = P.ink; g.lineWidth = 1; g.beginPath(); for (let i = 0; i < FORT.length * a; i += 3) { const p = FORT[i], q = [ALT[0] + (p[0] - ALT[0]) * 1.1, ALT[1] + (p[1] - ALT[1]) * 1.1]; const s1 = S(p[0], p[1]), s2 = S(q[0], q[1]); g.moveTo(s1[0], s1[1]); g.lineTo(s2[0], s2[1]); } g.stroke(); g.restore(); } }
+  // Bäume
+  g.save(); g.strokeStyle = P.ink; g.fillStyle = P.ink;
+  for (const tr of TREES) { if (!visible(tr[0], tr[1], 40)) continue; const a = mapReveal(t, tr[0], tr[1]); if (a <= 0) continue; const s = S(tr[0], tr[1]), r = tr[2] * CZ * (.6 + .4 * eo(a)) * 1.0;
+    if (r < 1.2) continue; g.globalAlpha = a * .62; g.lineWidth = Math.max(.7, Math.min(1.3, r * .1)); g.beginPath(); g.arc(s[0], s[1], r, 0, 7); g.stroke();
+    if (r > 3.5) { g.globalAlpha = a * .55; const dx = Math.cos(tr[3]) * r * .22, dy = Math.sin(tr[3]) * r * .22, pr = Math.max(.7, r * .09); g.beginPath(); g.arc(s[0] + dx, s[1] + dy, pr, 0, 7); g.arc(s[0] - dx, s[1] - dy, pr, 0, 7); g.fill(); } }
+  g.restore();
+  // Brücken
+  for (const [x, y] of BRIDGES) { const a = mapReveal(t, x, y); if (a <= 0) continue; const s1 = S(x - RW - 16, y), s2 = S(x + RW + 16, y), o = (y === -22 ? 19 : 9) * CZ; g.save(); g.globalAlpha = a; g.fillStyle = P.paperL; g.fillRect(s1[0], s1[1] - o, s2[0] - s1[0], 2 * o);
+    g.strokeStyle = P.ink; g.lineWidth = lw(1.4); g.beginPath(); g.moveTo(s1[0], s1[1] - o); g.lineTo(s2[0], s2[1] - o); g.moveTo(s1[0], s1[1] + o); g.lineTo(s2[0], s2[1] + o); g.stroke(); g.restore(); }
+}
+function drawLabels(g, t) {
+  for (const L of LABELS) { const [s, x, y, size, z0, z1] = L; const a = mapReveal(t, x, y) * lin(CZ, z0 - .04, z0 + .04) * (1 - lin(CZ, z1, z1 + .08)); if (a <= 0) continue;
+    const p = S(x, y); g.save(); g.globalAlpha = a * .92; g.restore();
+    capsLabel(g, s, p[0], p[1], size, a * .92, P.lab, 'center', size * .2); }
+}
+// Verteilzentrum im Grundriss
+function drawVZ(g, t) {
+  const b = VZB; if (!visible(b.x, b.y, 700)) return; const a = mapReveal(t, b.x, b.y); if (a <= 0) return;
+  g.save(); g.globalAlpha = a; pathS(g, CLEAR, true); g.fillStyle = 'rgba(240,231,212,.7)'; g.fill(); g.setLineDash([9, 7]); g.strokeStyle = P.ink; g.lineWidth = lw(1.3); g.globalAlpha = a * .8; g.stroke(); g.setLineDash([]); g.restore();
+  const p0 = S(b.x - b.w / 2, b.y - b.h / 2), p1 = S(b.x + b.w / 2, b.y + b.h / 2), w = p1[0] - p0[0], h = p1[1] - p0[1], wall = 16 * CZ, det = lin(CZ, .5, .9);
+  g.save(); g.globalAlpha = a;
+  g.fillStyle = P.paperL; g.fillRect(p0[0] - wall, p0[1] - wall, w + wall * 2, h + wall * 2);
+  hatchRect(g, p0[0] - wall, p0[1] - wall, w + wall * 2, wall, P.ink, Math.max(3, 5 * CZ), .7); hatchRect(g, p0[0] - wall, p0[1] + h, w + wall * 2, wall, P.ink, Math.max(3, 5 * CZ), .7);
+  hatchRect(g, p0[0] - wall, p0[1], wall, h, P.ink, Math.max(3, 5 * CZ), .7); hatchRect(g, p0[0] + w, p0[1], wall, h, P.ink, Math.max(3, 5 * CZ), .7);
+  g.strokeStyle = P.inkD; g.lineWidth = lw(1.8); g.strokeRect(p0[0] - wall, p0[1] - wall, w + wall * 2, h + wall * 2); g.strokeRect(p0[0], p0[1], w, h);
+  // Tore links/rechts
+  g.fillStyle = P.paperL; for (const yy of [.3, .62]) { g.fillRect(p0[0] - wall - 2, p0[1] + h * yy - 14 * CZ, wall + 4, 28 * CZ); g.fillRect(p0[0] + w - 2, p0[1] + h * (yy + .05) - 14 * CZ, wall + 4, 28 * CZ); }
+  if (det > 0) { g.globalAlpha = a * det;
+    // Regalreihen
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 6; c++) { const x = p0[0] + w * (.22 + c * .1), y = p0[1] + h * (.1 + r * .1) ; hatchRect(g, x, y, w * .075, h * .06, P.ink, 3.5 * CZ, .6, -1); g.strokeStyle = P.ink; g.lineWidth = 1; g.strokeRect(x, y, w * .075, h * .06); }
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 6; c++) { const x = p0[0] + w * (.22 + c * .1), y = p0[1] + h * (.72 + r * .1); hatchRect(g, x, y, w * .075, h * .06, P.ink, 3.5 * CZ, .6, -1); g.strokeStyle = P.ink; g.lineWidth = 1; g.strokeRect(x, y, w * .075, h * .06); }
+    // Förderband mit laufenden Rollen
+    const by = p0[1] + h * .56, bx0 = p0[0] + w * .05, bx1 = p0[0] + w * .95, bh = 18 * CZ; g.strokeStyle = P.inkD; g.lineWidth = 1.4; g.strokeRect(bx0, by - bh / 2, bx1 - bx0, bh);
+    g.lineWidth = 1; g.globalAlpha = a * det * .7; g.beginPath(); const off = (t * 60 * CZ) % (9 * CZ); for (let x = bx0 + off; x < bx1; x += 9 * CZ) { g.moveTo(x, by - bh / 2); g.lineTo(x, by + bh / 2); } g.stroke();
+    g.globalAlpha = a * det; for (let k = 0; k < 9; k++) { const x = bx0 + ((k * 71 + t * 60) % 1) * 0 + ((k / 9 + t * .045) % 1) * (bx1 - bx0); parcel(g, x, by, 11 * CZ, P.ink, 1); }
+  }
+  g.restore();
+}
+function parcel(g, x, y, s, col, a = 1, fill = P.paperL) { g.save(); g.globalAlpha *= a; g.fillStyle = fill; g.fillRect(x - s / 2, y - s / 2, s, s); g.strokeStyle = col; g.lineWidth = Math.max(1, s * .1); g.strokeRect(x - s / 2, y - s / 2, s, s);
+  g.beginPath(); g.moveTo(x - s / 2, y - s / 2); g.lineTo(x + s / 2, y + s / 2); g.moveTo(x + s / 2, y - s / 2); g.lineTo(x - s / 2, y + s / 2); g.stroke(); g.restore(); }
+
+// ---------- Kartusche (Doppelrahmen, Eckquadrate, Schnörkel) ----------
+const CART = [[K.sonst, 'Auftrag in Gefahr'], [K.post, 'Post: frühestens in 2 Tagen'], [K.ueber, 'Zweimal umgeladen'], [K.stadtbote, 'Stadtbote: direkt zum Kunden'], [K.abgeholt, 'Abgeholt in 60 Minuten'],
+  [K.quer, 'Quer durch die Stadt, ohne Umweg'], [K.halb, 'Zugestellt um 15:30 Uhr'], [K.mit, 'Unterschrift und Foto als Beleg'], [K.auftrag2, 'Der Auftrag gehört Ihnen'], [K.name - .35, null]];
+function cartouche(g, x, y, text, a, size = 40, center = false) {
+  if (a <= 0 || !text) return; const tw0 = tw(g, text, size, .2), w = tw0 + size * 1.5, h = size * 1.9; const x0 = center ? x - w / 2 : x;
+  g.save(); g.globalAlpha *= a; g.fillStyle = '#EDE2CC'; g.fillRect(x0, y, w, h);
+  g.strokeStyle = P.inkD; g.lineWidth = 1.6; g.strokeRect(x0 + .5, y + .5, w, h); g.lineWidth = 1; g.strokeRect(x0 + 6.5, y + 6.5, w - 12, h - 12);
+  g.fillStyle = P.inkD; for (const [cx, cy] of [[x0, y], [x0 + w, y], [x0, y + h], [x0 + w, y + h]]) g.fillRect(cx - 4, cy - 4, 9, 9);
+  // Eckschnörkel
+  g.lineWidth = 1; g.globalAlpha *= .6; for (const [cx, cy, sx, sy] of [[x0 + 12, y + 12, 1, 1], [x0 + w - 12, y + 12, -1, 1], [x0 + 12, y + h - 12, 1, -1], [x0 + w - 12, y + h - 12, -1, -1]]) {
+    g.beginPath(); g.moveTo(cx, cy + sy * 10); g.quadraticCurveTo(cx, cy, cx + sx * 10, cy); g.stroke(); g.beginPath(); g.arc(cx + sx * 4, cy + sy * 4, 1.6, 0, 7); g.stroke(); }
+  g.globalAlpha /= .6; txt(g, text, x0 + w / 2, y + h / 2 + size * .33, size, P.inkD, { align: 'center', ls: .2 }); g.restore();
+  return w;
+}
+function drawCart(g, t) {
+  for (let i = 0; i < CART.length - 1; i++) { const [t0, s] = CART[i], t1 = CART[i + 1][0]; if (!s) continue;
+    const ain = eo(lin(t, t0 - .34, t0 - .04)), aout = 1 - lin(t, t1 - .34, t1 - .18); const a = Math.min(ain, aout); if (a <= 0) continue;
+    const box = eo(lin(t, t0 - .34, t0 - .14)); g.save(); g.globalAlpha = a; cartouche(g, 96, 902 + (1 - box) * 10, s, 1, 40); g.restore(); }
+}
+
+// ---------- Kompassrose ----------
+function compass(g, cx, cy, R, a, rot, prog = 1) {
+  if (a <= 0) return; g.save(); g.globalAlpha = a; g.translate(cx, cy); g.strokeStyle = P.ink; g.fillStyle = P.ink;
+  g.lineWidth = 1.4; g.beginPath(); g.arc(0, 0, R * .74, 0, Math.PI * 2 * prog); g.stroke(); g.lineWidth = .9; g.beginPath(); g.arc(0, 0, R * .7, 0, Math.PI * 2 * prog); g.stroke(); g.beginPath(); g.arc(0, 0, R * .32, 0, Math.PI * 2 * prog); g.stroke();
+  g.lineWidth = .8; for (let k = 0; k < 64 * prog; k++) { const an = k / 64 * Math.PI * 2; const r0 = k % 4 ? R * .7 : R * .66; g.beginPath(); g.moveTo(Math.cos(an) * r0, Math.sin(an) * r0); g.lineTo(Math.cos(an) * R * .74, Math.sin(an) * R * .74); g.stroke(); }
+  g.rotate(rot);
+  const star = (n, r, wd, off) => { for (let k = 0; k < n; k++) { const an = off + k / n * Math.PI * 2 - Math.PI / 2, ca = Math.cos(an), sa = Math.sin(an), cb = Math.cos(an + Math.PI / 2), sb = Math.sin(an + Math.PI / 2);
+    const tip = [ca * r * prog, sa * r * prog]; g.beginPath(); g.moveTo(0, 0); g.lineTo(cb * wd, sb * wd); g.lineTo(tip[0], tip[1]); g.closePath(); g.globalAlpha = a * .55; g.fill(); g.globalAlpha = a; g.stroke();
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(-cb * wd, -sb * wd); g.lineTo(tip[0], tip[1]); g.closePath(); g.stroke(); } };
+  g.lineWidth = 1; star(8, R * .45, R * .05, Math.PI / 8); star(4, R * .66, R * .07, Math.PI / 4); star(4, R, R * .085, 0);
+  g.rotate(-rot); txt(g, 'N', Math.sin(rot) * R * 1.14, -Math.cos(rot) * R * 1.14 + R * .05, R * .15, P.ink, { align: 'center' });
+  g.restore();
+}
+
+// ---------- Taschenuhr (Kupferstich) ----------
+function watch(g, cx, cy, R, a, t, prog = 1, sweep = 0) {
+  if (a <= 0) return; g.save(); g.globalAlpha = a; g.translate(cx, cy);
+  // Bügel und Krone
+  g.strokeStyle = P.inkD; g.lineWidth = R * .03; g.beginPath(); g.arc(0, -R * 1.22, R * .16, 0, Math.PI * 2 * prog); g.stroke();
+  g.fillStyle = '#E9DDC5'; g.fillRect(-R * .09, -R * 1.1, R * .18, R * .13); g.lineWidth = 1.4; g.strokeRect(-R * .09, -R * 1.1, R * .18, R * .13);
+  g.lineWidth = 1; for (let k = 1; k < 6; k++) { g.beginPath(); g.moveTo(-R * .09 + k * R * .03, -R * 1.1); g.lineTo(-R * .09 + k * R * .03, -R * .97); g.stroke(); }
+  // Gehäuse: Doppelring mit Schraffur unten rechts
+  g.fillStyle = '#EFE5D1'; g.beginPath(); g.arc(0, 0, R, 0, 7); g.fill();
+  g.save(); g.beginPath(); g.arc(0, 0, R, 0, 7); g.arc(0, 0, R * .88, 0, 7, true); g.clip(); g.lineWidth = 1; g.strokeStyle = P.ink; g.globalAlpha = a * .75; g.beginPath();
+  for (let k = 0; k < 90 * prog; k++) { const an = -.4 + k / 90 * Math.PI * 1.35; const dd = Math.sin((an + .4) / 1.35 * Math.PI); if (dd < .08) continue; g.moveTo(Math.cos(an) * R * .88, Math.sin(an) * R * .88); g.lineTo(Math.cos(an + .05) * R * (.88 + .12 * dd), Math.sin(an + .05) * R * (.88 + .12 * dd)); }
+  g.stroke(); g.restore();
+  g.strokeStyle = P.inkD; g.lineWidth = R * .022; g.beginPath(); g.arc(0, 0, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog); g.stroke(); g.lineWidth = R * .01; g.beginPath(); g.arc(0, 0, R * .88, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog); g.stroke();
+  g.beginPath(); g.arc(0, 0, R * .8, 0, Math.PI * 2 * prog); g.lineWidth = .8; g.stroke();
+  // rote Restzeit (schraffierter Sektor bis XII)
+  if (sweep > 0) { const m0 = -Math.PI / 2 - Math.PI * 2 * (5 / 60) * sweep; g.save(); g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, R * .78, m0, -Math.PI / 2); g.closePath(); g.fillStyle = 'rgba(156,58,43,.22)'; g.fill(); g.clip();
+    g.strokeStyle = P.red; g.lineWidth = 1.3; g.globalAlpha = a * .8; g.beginPath(); for (let k = -R; k < R; k += 6) { g.moveTo(k - R, R); g.lineTo(k + R, -R); } g.stroke(); g.restore(); }
+  // Minutenstriche und römische Ziffern
+  g.strokeStyle = P.inkD; for (let k = 0; k < 60 * prog; k++) { const an = k / 60 * Math.PI * 2 - Math.PI / 2, r0 = k % 5 ? R * .76 : R * .72; g.lineWidth = k % 5 ? .8 : 1.6; g.beginPath(); g.moveTo(Math.cos(an) * r0, Math.sin(an) * r0); g.lineTo(Math.cos(an) * R * .8, Math.sin(an) * R * .8); g.stroke(); }
+  const RN = ['XII', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+  g.globalAlpha = a * clamp(prog * 1.5 - .3); for (let k = 0; k < 12; k++) { const an = k / 12 * Math.PI * 2 - Math.PI / 2; g.save(); g.translate(Math.cos(an) * R * .6, Math.sin(an) * R * .6); g.rotate(an + Math.PI / 2); txt(g, RN[k], 0, R * .06, R * .15, P.inkD, { align: 'center' }); g.restore(); }
+  g.globalAlpha = a;
+  // Zeiger: 16:55, Sekundenzeiger springt alle 0,25 s
+  const hand = (an, len, wd, col) => { g.save(); g.rotate(an); g.fillStyle = col; g.beginPath(); g.moveTo(-wd * .5, R * .08); g.lineTo(-wd, 0); g.lineTo(0, -len * .72); g.lineTo(-wd * 1.3, -len * .78); g.lineTo(0, -len); g.lineTo(wd * 1.3, -len * .78); g.lineTo(0, -len * .72); g.lineTo(wd, 0); g.lineTo(wd * .5, R * .08); g.closePath(); g.fill(); g.restore(); };
+  const mins = 55 + Math.floor(t * 4) / 4 / 60 * 4; hand((4 + mins / 60) / 12 * Math.PI * 2, R * .42, R * .035, P.inkD); hand(mins / 60 * Math.PI * 2, R * .66, R * .026, P.inkD);
+  g.save(); g.rotate(Math.floor(t * 4) / 4 * Math.PI * 2 / 15); g.strokeStyle = P.red; g.lineWidth = 1.6; g.beginPath(); g.moveTo(0, R * .14); g.lineTo(0, -R * .74); g.stroke(); g.restore();
+  g.fillStyle = P.inkD; g.beginPath(); g.arc(0, 0, R * .035, 0, 7); g.fill();
+  g.restore();
+}
+
+// ---------- Dokumente ----------
+function contract(g, cx, cy, a, prog, seal, t) {
+  if (a <= 0) return; g.save(); g.globalAlpha = a; g.translate(cx, cy); g.rotate(-.05);
+  const w = 360, h = 470; g.fillStyle = '#F1E8D6'; g.fillRect(-w / 2, -h / 2, w, h);
+  g.strokeStyle = P.inkD; g.lineWidth = 1.8; g.beginPath(); const per = [[-w / 2, -h / 2], [w / 2 - 44, -h / 2], [w / 2, -h / 2 + 44], [w / 2, h / 2], [-w / 2, h / 2], [-w / 2, -h / 2]]; const tot = per.length - 1, np = prog * tot;
+  g.moveTo(per[0][0], per[0][1]); for (let i = 1; i <= Math.ceil(np); i++) { const k = Math.min(1, np - (i - 1)); g.lineTo(mix(per[i - 1][0], per[i][0], k), mix(per[i - 1][1], per[i][1], k)); } g.stroke();
+  if (prog > .5) { g.lineWidth = 1.2; g.beginPath(); g.moveTo(w / 2 - 44, -h / 2); g.lineTo(w / 2 - 44, -h / 2 + 44); g.lineTo(w / 2, -h / 2 + 44); g.stroke(); }
+  g.lineWidth = .9; g.strokeRect(-w / 2 + 16, -h / 2 + 16, (w - 32) * clamp(prog * 1.4), h - 32);
+  capsLabel(g, 'VERTRAG', 0, -h / 2 + 82, 34, clamp(prog * 2 - .4), P.inkD, 'center', 8);
+  g.strokeStyle = P.ink; g.lineWidth = 1.1; const R = rng(4); for (let k = 0; k < 11; k++) { const y = -h / 2 + 130 + k * 22, l = (k % 4 === 3 ? .5 : .8 + R() * .15) * (w - 90); const pk = clamp(prog * 2.2 - k * .1); if (pk <= 0) continue;
+    g.beginPath(); for (let x = 0; x <= l * pk; x += 8) g.lineTo(-w / 2 + 45 + x, y + 1.2 * vn(x / 20 + k * 3, 3)); g.stroke(); }
+  g.lineWidth = 1.2; g.beginPath(); g.moveTo(-w / 2 + 45, h / 2 - 70); g.lineTo(-w / 2 + 45 + 150 * clamp(prog * 2 - 1), h / 2 - 70); g.stroke();
+  // Siegel
+  if (seal > 0) { const s = 1 + (1 - seal) * .6; g.save(); g.translate(w / 2 - 80, h / 2 - 80); g.scale(s, s); g.globalAlpha = a * clamp(seal * 1.8); g.fillStyle = P.red; g.beginPath();
+    for (let i = 0; i <= 36; i++) { const an = i / 36 * Math.PI * 2, r = 46 * (1 + .07 * vn(i * .9, 12)); i ? g.lineTo(Math.cos(an) * r, Math.sin(an) * r) : g.moveTo(Math.cos(an) * r, Math.sin(an) * r); } g.fill();
+    g.strokeStyle = P.redD; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, 33, 0, 7); g.stroke(); txt(g, 'S', 0, 14, 40, '#E9C7B6', { align: 'center', w: 700 }); g.restore(); }
+  g.restore();
+}
+function doorSketch(g, x, y, w, h, prog) { // Foto der Haustür, Kupferstich-Schraffur
+  g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip(); g.fillStyle = '#E9DFCB'; g.fillRect(x, y, w, h);
+  g.strokeStyle = P.ink; g.lineWidth = 1; g.globalAlpha = .45 * prog; g.beginPath(); for (let k = 0; k < h; k += 4) { g.moveTo(x, y + k); g.lineTo(x + w * .22, y + k); g.moveTo(x + w * .78, y + k); g.lineTo(x + w, y + k); } g.stroke();
+  g.globalAlpha = prog; g.lineWidth = 1.6; g.strokeStyle = P.inkD; const dx = x + w * .26, dw = w * .48, dy = y + h * .16, dh = h * .78;
+  g.strokeRect(dx, dy, dw, dh); g.beginPath(); g.arc(dx + dw / 2, dy, dw / 2, Math.PI, 0); g.stroke();
+  g.lineWidth = 1; for (const [a, b] of [[.12, .42], [.52, .9]]) { g.strokeRect(dx + dw * .15, dy + dh * a, dw * .3, dh * (b - a)); g.strokeRect(dx + dw * .55, dy + dh * a, dw * .3, dh * (b - a)); }
+  g.globalAlpha = prog * .5; g.beginPath(); for (let k = 0; k < dw; k += 3.5) { g.moveTo(dx + k, dy + dh * .92); g.lineTo(dx + k + 6, dy + dh); } g.stroke();
+  g.globalAlpha = prog; g.beginPath(); g.arc(dx + dw * .82, dy + dh * .5, 3, 0, 7); g.fill && (g.fillStyle = P.inkD, g.fill()); txt(g, '12', dx + dw / 2, dy - dw * .15, 18, P.inkD, { align: 'center' });
+  // Paket vor der Tür
+  const px = dx + dw * .62, py = dy + dh * .8; g.fillStyle = '#E4D3B2'; g.fillRect(px, py, dw * .34, dh * .16); g.strokeRect(px, py, dw * .34, dh * .16); g.beginPath(); g.moveTo(px + dw * .17, py); g.lineTo(px + dw * .17, py + dh * .16); g.stroke();
+  g.restore(); g.strokeStyle = P.inkD; g.lineWidth = 1.2; g.strokeRect(x, y, w, h);
+}
+function receipt(g, t, a) {
+  if (a <= 0) return; g.save(); g.globalAlpha = a; const cx = 1010, cy = 470, w = 1180, h = 700; const z = 1 + .06 * lin(t, K.mit - .25, K.auftrag2 - .08); g.translate(cx, cy); g.scale(z, z); g.rotate(-.012); g.translate(-w / 2, -h / 2);
+  g.fillStyle = '#EFE6D3'; g.fillRect(0, 0, w, h); g.strokeStyle = P.inkD; g.lineWidth = 1.8; g.strokeRect(0, 0, w, h); g.lineWidth = 1; g.strokeRect(10, 10, w - 20, h - 20);
+  g.fillStyle = P.inkD; for (const [x, y] of [[0, 0], [w, 0], [0, h], [w, h]]) g.fillRect(x - 5, y - 5, 11, 11);
+  // Kopf: Zierlinie statt Überschrift; Zeilen als Tuschestriche (nichts zu lesen)
+  g.strokeStyle = P.inkD; g.lineWidth = 2; g.beginPath(); g.moveTo(60, 100); g.lineTo(640, 100); g.stroke(); g.lineWidth = 1; g.beginPath(); g.moveTo(60, 108); g.lineTo(640, 108); g.stroke();
+  [0, 1, 2].forEach(i => { const y = 190 + i * 76; g.strokeStyle = P.ink; g.lineWidth = 3; g.globalAlpha = .55; g.beginPath(); for (let x = 0; x <= 120; x += 6) g.lineTo(60 + x, y - 8 + 1.2 * vn(x / 14 + i, 5)); g.stroke();
+    g.lineWidth = 2.2; g.globalAlpha = .4; g.beginPath(); for (let x = 0; x <= 300 - i * 40; x += 6) g.lineTo(300 + x, y - 8 + 1.2 * vn(x / 16 + i * 3, 7)); g.stroke(); g.globalAlpha = 1;
+    g.save(); g.setLineDash([2, 5]); g.strokeStyle = P.ink; g.globalAlpha = .6; g.beginPath(); g.moveTo(60, y + 16); g.lineTo(640, y + 16); g.stroke(); g.restore(); });
+  // Unterschrift
+  g.strokeStyle = P.ink; g.lineWidth = 1.2; g.beginPath(); g.moveTo(60, 530); g.lineTo(560, 530); g.stroke();
+  const sp = lin(t, K.unterschrift - .38, K.unterschrift - .02); if (sp > 0) { g.strokeStyle = '#2B3050'; g.lineWidth = 3; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); const n = Math.floor(160 * sp);
+    for (let i = 0; i <= n; i++) { const u = i / 160, x = 90 + u * 420 + 26 * Math.sin(u * 38), y = 505 - 30 * Math.sin(u * 19) * Math.exp(-u * 1.2) - 12 * Math.sin(u * 50) - (u > .8 ? (u - .8) * 60 : 0); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+  // Foto mit Fotoecken
+  const fk = at(t, K.foto, .32); if (fk > 0) { g.save(); const fx = 730, fy = 150, fw = 360, fh = 330; g.translate(fx + fw / 2, fy + fh / 2 + (1 - fk) * 40); g.rotate(.035 + (1 - fk) * .1); g.globalAlpha = a * fk;
+    g.fillStyle = '#F4EEE0'; g.fillRect(-fw / 2 - 14, -fh / 2 - 14, fw + 28, fh + 28); g.strokeStyle = P.inkD; g.lineWidth = 1; g.strokeRect(-fw / 2 - 14, -fh / 2 - 14, fw + 28, fh + 28);
+    doorSketch(g, -fw / 2, -fh / 2, fw, fh, 1); g.fillStyle = P.inkD; for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { g.beginPath(); g.moveTo(sx * (fw / 2 + 14), sy * (fh / 2 + 14)); g.lineTo(sx * (fw / 2 + 14) - sx * 34, sy * (fh / 2 + 14)); g.lineTo(sx * (fw / 2 + 14), sy * (fh / 2 + 14) - sy * 34); g.closePath(); g.fill(); }
+    g.restore(); }
+  // Stempel
+  const st = at(t, K.beleg, .3); if (st > 0) { g.save(); g.translate(560, 420); g.rotate(-.18); const s = 1 + (1 - st) * .7; g.scale(s, s); g.globalAlpha = a * clamp(st * 1.6) * .88; g.strokeStyle = P.red; g.fillStyle = P.red;
+    g.lineWidth = 4; g.beginPath(); g.arc(0, 0, 118, 0, 7); g.stroke(); g.lineWidth = 1.6; g.beginPath(); g.arc(0, 0, 104, 0, 7); g.stroke(); g.beginPath(); g.arc(0, 0, 64, 0, 7); g.stroke();
+    for (let i = 0; i < 36; i++) { const an = i / 36 * Math.PI * 2; g.beginPath(); g.arc(Math.cos(an) * 84, Math.sin(an) * 84, 3, 0, 7); g.fill(); }
+    g.lineWidth = 11; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(-30, 2); g.lineTo(-8, 26); g.lineTo(34, -26); g.stroke(); g.restore(); }
+  g.restore();
+}
+
+// ---------- Kurier ----------
+function courierU(t) { // Position des Kuriers auf der Direktroute (0 = Büro, 1 = Kunde)
+  if (t < K.quer - .17) return 0; if (t < K.stadt + .02) return .78 * es(lin(t, K.quer - .17, K.stadt + .02)); if (t < K.da - .35) return .78 + .14 * lin(t, K.stadt + .02, K.da - .35); return .92 + .08 * eo(lin(t, K.da - .35, K.da - .03)); }
+function courierPos(t) { return ptAt(DIRECT, courierU(t)); }
+
+// ---------- Bild ----------
+function frame(t) {
+  const g = X; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  g.drawImage(PAPER, 0, 0);
+  setCam(t);
+  const mapA = t < K.mit - .25 ? lin(t, K.kunden - .4, K.kunden - .1) : t < K.auftrag2 - .38 ? 1 - .62 * lin(t, K.mit - .2, K.mit - .02) : t < K.name + .09 ? mix(.38, 1, lin(t, K.auftrag2 - .4, K.auftrag2 - .18)) * (1 - .55 * lin(t, K.name - .36, K.name - .03)) : .45;
+  if (mapA > 0) {
+    g.save(); g.globalAlpha = 1;
+    // Karte in eigene Ebene? direkt zeichnen, Alpha über Deckfläche
+    drawMap(g, t);
+    // Fläche „gehört Ihnen“
+    const fa = at(t, K.ihnen, .4); if (fa > 0 && t < K.name + .09) { const c = S(KUN[0], KUN[1]); g.save(); g.beginPath(); g.arc(c[0], c[1], 1500 * CZ * fa, 0, 7); g.clip();
+      pathS(g, AREA, true); g.fillStyle = 'rgba(166,112,86,.28)'; g.fill(); g.restore(); g.save(); g.beginPath(); g.arc(c[0], c[1], 1500 * CZ * fa, 0, 7); g.clip(); inkLine(g, AREA_EDGE, 1, lw(3), '#6A3E2C', .8); g.restore(); }
+    // Post-Umweg (blau), später als Geisterlinie
+    const bw = 17 * clamp(Math.pow(CZ / .65, .5), .55, 1.4);
+    if (t >= K.post - .3 && t < K.umweg + .02) {
+      const u1 = t < K.ueberm ? .03 + .97 * es(lin(t, K.post - .3, K.ueberm - .03)) : 1;
+      const retract = lin(t, K.stadtbote - .51, K.stadtbote - .06);
+      if (retract < 1) brush(g, DETOUR, retract, u1, bw, P.blue, 61, { alpha: 1 - retract * .3 });
+      if (t > K.stadtbote - .51) { const ga = .55 * lin(t, K.stadtbote - .51, K.stadtbote - .06) * (1 - lin(t, K.ohne - .25, K.ohne - .02)); if (ga > 0) { g.save(); g.setLineDash([10, 9]); inkLine(g, DETOUR.p, 1, lw(2.4), P.blue, ga); g.setLineDash([]); g.restore();
+        const m = ptAt(DETOUR, U140), sm = S(m[0], m[1]); g.save(); g.globalAlpha = ga * 1.5 * at(t, K.direkt, .3); txt(g, '140 km', sm[0] + 30, sm[1] + 12, 40, P.blue, { align: 'left' }); const ws = tw(g, '140 km', 40); const sk = eo(lin(t, K.direkt - .1, K.direkt + .2)); g.strokeStyle = P.red; g.lineWidth = 4; g.beginPath(); g.moveTo(sm[0] + 22, sm[1] + 2); g.lineTo(sm[0] + 22 + (ws + 16) * sk, sm[1] - 4); g.stroke(); g.restore(); } }
+    }
+    // Direktroute rot
+    if (t >= K.direkt - .5) { const u1 = es(lin(t, K.direkt - .42, K.direkt - .02)); brush(g, DIRECT, 0, u1, 25 * clamp(Math.pow(CZ / .65, .5), .6, 1.5), P.red, 71);
+      const m = ptAt(DIRECT, .5), sm = S(m[0], m[1]); g.save(); g.globalAlpha = at(t, K.direkt, .25) * (1 - lin(t, K.mit - .25, K.mit - .05)); txt(g, '9 km', sm[0] + 22, sm[1] + 50, 40, P.red); g.restore(); }
+    // Marker
+    const rv = (x, y) => mapReveal(t, x, y);
+    office(g, SIE[0], SIE[1], rv(SIE[0], SIE[1]));
+    const ps = S(SIE[0], SIE[1]); capsLabel(g, 'BÜRO', ps[0] - 24 * clamp(CZ / .65, .8, 1.6), ps[1] + 9, 26, rv(SIE[0], SIE[1]) * lin(CZ, .4, .5), P.lab, 'right', 4);
+    const pulse = t > K.da - .1 && t < K.da + 1.1 ? (t - K.da + .1) / 1.2 : t > K.ihnen - .1 && t < K.ihnen + 1.1 ? (t - K.ihnen + .1) / 1.2 : 0;
+    target(g, KUN[0], KUN[1], Math.max(rv(KUN[0], KUN[1]), at(t, K.kunden, .3)), t, pulse);
+    const pk = S(KUN[0], KUN[1]); capsLabel(g, 'KUNDE', pk[0] + 44 * clamp(CZ / .65, .8, 1.6), pk[1] + 9, 27, Math.max(rv(KUN[0], KUN[1]), at(t, K.kunden, .3)) * lin(CZ, .4, .5), P.lab, 'left', 4);
+    // Auftrag-Block am Kunden: erscheint, fällt bei „weg“, kehrt bei „Auftrag gehört Ihnen“ zurück
+    { const a1 = at(t, K.auftrag, .3), fall = 0, strike = eo(lin(t, K.weg - .24, K.weg - .02)), back2 = at(t, K.auftrag2, .34); const s = S(KUN[0] + 20, KUN[1] - 70), sc = clamp(CZ / .65, .8, 1.6);
+      let a = t < K.auftrag2 - .48 ? a1 * (1 - .55 * strike) * (1 - lin(t, K.stadtbote - .51, K.stadtbote - .06)) : back2; if (a > 0 && t < K.name + .09) { g.save(); g.translate(s[0], s[1]); g.globalAlpha = a;
+        g.fillStyle = 'rgba(214,160,145,.95)'; g.fillRect(-40 * sc, -12 * sc, 80 * sc, 24 * sc); hatchRect(g, -48 * sc, -12 * sc, 96 * sc, 24 * sc, P.red, 4.5 * sc, .9); g.strokeStyle = P.red; g.lineWidth = 2; g.strokeRect(-40 * sc, -12 * sc, 80 * sc, 24 * sc);
+        txt(g, 'Auftrag', 0, -26 * sc, 40 * Math.min(sc, 1.3), P.red, { align: 'center' }); g.restore(); }
+      if (strike > 0 && t < K.stadtbote - .06) { g.save(); g.globalAlpha = 1 - lin(t, K.stadtbote - .51, K.stadtbote - .06); g.strokeStyle = P.blot; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(s[0] - 80 * sc, s[1] - 30 * sc); g.lineTo(s[0] - 80 * sc + 160 * sc * strike, s[1] - 30 * sc + 44 * sc * strike); g.stroke(); g.restore(); }
+      if (t > K.auftrag2 - .48 && back2 > .5 && t < K.name + .09) { g.save(); g.globalAlpha = at(t, K.ihnen, .3); g.strokeStyle = P.red; g.lineWidth = 4; g.lineCap = 'round'; const q = s; g.beginPath(); g.moveTo(q[0] + 50 * sc, q[1] - 2); g.lineTo(q[0] + 62 * sc, q[1] + 10 * sc); g.lineTo(q[0] + 86 * sc, q[1] - 18 * sc); g.stroke(); g.restore(); } }
+    // Tintenklecks „übermorgen“
+    if (t < K.stadtbote - .02) { const bk = back(lin(t, K.ueberm - .16, K.ueberm + .04)); blot(g, KUN[0] + 60, KUN[1] + 40, 26 * CZ / .65 * .9, bk * (1 - lin(t, K.stadtbote - .51, K.stadtbote - .06)), 77);
+      const e = ptAt(DETOUR, 1), se = S(KUN[0], KUN[1]); if (t > K.frueh - .4) { g.save(); g.globalAlpha = at(t, K.ueberm, .3) * (1 - lin(t, K.ueberm + .34, K.ueberm + .59)); txt(g, '+2 Tage', se[0] + 70, se[1] - 40, 52, P.blue); g.restore(); } }
+    // Post-Einheit am Büro
+    { const a = at(t, K.post, .3) * (1 - lin(t, K.ueberm + .29, K.ueberm + .49)); if (a > 0) { const p = ptAt(DETOUR, .005 + .05 * lin(t, K.post, K.ueberm + .29)); postUnit(g, p[0] - 40, p[1] + 40, a, clamp(CZ / .65, .7, 1.4)); const s = S(p[0] - 40, p[1] + 40); txt(g, 'Post', s[0] - 30, s[1] + 44, 38, P.blue, { align: 'center' }); } }
+    // Verteilzentrum
+    drawVZ(g, t);
+    // Paket im Verteilzentrum: zweimal umgeladen
+    if (t > K.ueberm + .39 && t < K.stadtbote - .22) { const v = VZB, pts = [[v.x - v.w / 2 - 70, v.y - 12], [v.x - 60, v.y + 20], [v.x + v.w / 2 + 70, v.y + 30]];
+      const k1 = es(lin(t, K.vz - .34, K.vz - .02)), k2 = es(lin(t, K.zweimal - .34, K.zweimal - .02)); let p = [mix(pts[0][0], pts[1][0], k1), mix(pts[0][1], pts[1][1], k1) - Math.sin(k1 * Math.PI) * 60];
+      if (k2 > 0) p = [mix(pts[1][0], pts[2][0], k2), mix(pts[1][1], pts[2][1], k2) - Math.sin(k2 * Math.PI) * 60];
+      // Lkw an beiden Toren
+      postUnit(g, pts[0][0] - 50, pts[0][1], 1, CZ * 1.4); const tx = pts[2][0] + 50 + 400 * es(lin(t, K.umgeladen + .18, K.umgeladen + .78)); postUnit(g, tx, pts[2][1], 1, CZ * 1.4);
+      // Bögen I und II
+      for (const [kk, A, B, lab, tw0] of [[k1, pts[0], pts[1], 'I', K.vz], [k2, pts[1], pts[2], 'II', K.zweimal]]) { if (kk <= 0) continue; const arc = []; for (let i = 0; i <= 30 * kk; i++) { const u = i / 30; arc.push([mix(A[0], B[0], u), mix(A[1], B[1], u) - Math.sin(u * Math.PI) * 60]); }
+        g.save(); g.setLineDash([6, 6]); inkLine(g, arc, 1, 2, P.red, .9); g.restore(); const m = S(mix(A[0], B[0], .5), mix(A[1], B[1], .5) - 60); g.save(); g.globalAlpha = at(t, tw0, .3); txt(g, lab, m[0], m[1] - 22, 54, P.red, { align: 'center', w: 400 }); g.restore(); }
+      const sp = S(p[0], p[1]); parcel(g, sp[0], sp[1], 30 * CZ, P.red, 1, '#EBC9BC'); }
+    // Kurier-Einheit
+    { const a = at(t, K.stadtbote, .32) * (1 - lin(t, K.mit - .25, K.mit - .05)); if (a > 0 && t < K.auftrag2 - .48) { let p;
+        if (t < K.abgeholt + .01) { const k = es(lin(t, K.direkt + .25, K.abgeholt - .02)); p = [mix(SIE[0] - 170, SIE[0], k), mix(SIE[1] + 90, SIE[1] + 30, k)]; } else if (t < K.quer - .17) p = [SIE[0], SIE[1] + 30 - 30 * es(lin(t, K.quer - .62, K.quer - .17))]; else { const c = courierPos(t); p = [c[0], c[1]]; }
+        const sc = clamp(CZ / .65, .8, 1.7); courierUnit(g, p[0], p[1], a, sc); const s = S(p[0], p[1]); txt(g, 'Stadtbote', s[0], s[1] - 24 * sc, 38 * Math.min(1.3, sc), P.red, { align: 'center' }); } }
+    // Uhr am Büro: 60 Minuten
+    { const a = at(t, K.abgeholt, .3) * (1 - lin(t, K.quer - .32, K.quer - .07)); if (a > 0) { const s = S(SIE[0] - 250, SIE[1] - 120), R = 105;
+        g.save(); g.globalAlpha = a; g.translate(s[0], s[1]); g.fillStyle = '#EFE5D1'; g.beginPath(); g.arc(0, 0, R, 0, 7); g.fill(); g.strokeStyle = P.inkD; g.lineWidth = 3; g.stroke(); g.lineWidth = 1; g.beginPath(); g.arc(0, 0, R * .86, 0, 7); g.stroke();
+        g.lineWidth = 3; g.beginPath(); g.moveTo(-10, -R - 16); g.lineTo(10, -R - 16); g.moveTo(0, -R - 16); g.lineTo(0, -R); g.stroke();
+        const sw = es(lin(t, K.abgeholt + .05, K.sechzig - .05)); g.save(); g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, R * .8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sw); g.closePath(); g.fillStyle = 'rgba(156,58,43,.2)'; g.fill(); g.clip();
+        g.strokeStyle = P.red; g.lineWidth = 1.2; g.beginPath(); for (let k = -R; k < R; k += 6) { g.moveTo(k - R, R); g.lineTo(k + R, -R); } g.stroke(); g.restore();
+        g.strokeStyle = P.inkD; for (let k = 0; k < 60; k++) { const an = k / 60 * Math.PI * 2; g.lineWidth = k % 5 ? .8 : 2; const r0 = k % 5 ? R * .8 : R * .72; g.beginPath(); g.moveTo(Math.cos(an) * r0, Math.sin(an) * r0); g.lineTo(Math.cos(an) * R * .86, Math.sin(an) * R * .86); g.stroke(); }
+        g.rotate(Math.PI * 2 * sw); g.strokeStyle = P.red; g.lineWidth = 2.4; g.beginPath(); g.moveTo(0, 12); g.lineTo(0, -R * .78); g.stroke(); g.restore();
+        g.save(); g.globalAlpha = at(t, K.sechzig, .3) * (1 - lin(t, K.quer - .32, K.quer - .07)); txt(g, '60 min', s[0], s[1] + R + 88, 76, P.inkD, { align: 'center' }); g.restore(); } }
+    // 15:30 am Kunden
+    { const a = at(t, K.halbw, .3) * (1 - lin(t, K.mit - .25, K.mit - .05)); if (a > 0) { const s = S(KUN[0] + 140, KUN[1] - 150), c = S(KUN[0], KUN[1]); g.save(); g.globalAlpha = a; txt(g, '15:30', s[0], s[1] + (1 - a) * 12, 120, P.inkD, { align: 'left' });
+        g.strokeStyle = P.inkD; g.lineWidth = 1.4; g.beginPath(); g.moveTo(s[0] - 8, s[1] - 30); g.lineTo(c[0] + 30, c[1] - 26); g.stroke(); g.restore(); } }
+    drawLabels(g, t);
+    g.restore();
+    // Deckung für Kartenein-/ausblendung: Papier drüber
+    if (mapA < 1) { g.save(); g.globalAlpha = 1 - mapA; g.drawImage(PAPER, 0, 0); g.restore(); }
+  }
+  // ---- Einstieg: Vertrag, Taschenuhr (V7: kein Titel „Heute noch“ – die rote Restzeit auf der Uhr zeigt die Frist) ----
+  if (t < K.kunden - .05) { const ex = eio(lin(t, K.kunden - .4, K.kunden - .05)), aH = 1 - ex; const z = mix(1.12, .96, es(lin(t, 0, K.kunden + .4))) * (1 - ex * .35); const G0 = g;
+    { const g = LAY.getContext('2d'), a = 1; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H);
+    g.save(); g.translate(W / 2, H / 2); g.scale(z, z); g.translate(-W / 2, -H / 2);
+    compass(g, 960, 540, 380, .2, t * .16, eo(lin(t, 0, .9)));
+    g.save(); g.translate(610, 560); g.scale(1.12, 1.12); contract(g, 0, 0, 1, eo(lin(t, 0, K.vertrag - .03)), eo(lin(t, K.vertrag + .1, K.vertrag + .32)), t); g.restore();
+    watch(g, 1310, 560, 215, 1, t, eo(lin(t, .05, .45)), es(lin(t, K.heute - .3, K.heute + .3)));
+    g.restore(); } G0.save(); G0.globalAlpha = aH; G0.drawImage(LAY, 0, 0); G0.restore(); }
+  // ---- Zustellnachweis ----
+  if (t > K.mit - .25 && t < K.auftrag2 - .08) { const a = eo(lin(t, K.mit - .25, K.mit - .02)) * (1 - eio(lin(t, K.auftrag2 - .43, K.auftrag2 - .13))); receipt(g, t, a); }
+  // ---- Schluss: Titel wie „Saratoga“ ----
+  if (t > K.name - .41) { const aE = eo(lin(t, K.name - .36, K.name - .01)) * (1 - lin(t, DUR - .4, DUR)); const up = eio(lin(t, K.rufen - .4, K.rufen - .08)); const G0 = g;
+    { const g = LAY.getContext('2d'), a = 1; g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, W, H); g.save();
+    { const rg = g.createRadialGradient(960, 520, 200, 960, 540, 1000); rg.addColorStop(0, 'rgba(232,220,195,.94)'); rg.addColorStop(.45, 'rgba(232,220,195,.7)'); rg.addColorStop(1, 'rgba(232,220,195,0)'); g.fillStyle = rg; g.fillRect(0, 0, W, H); }
+    const zz = 1 + .12 * lin(t, K.name - .31, DUR); g.translate(W / 2, H / 2); g.scale(zz, zz); g.translate(-W / 2, -H / 2);
+    compass(g, 960, 520 - up * 60, 400, .22, (t - K.name + .31) * .09, eo(lin(t, K.name - .36, K.name + .59)));
+    const ty = 520 - up * 190;
+    const k1 = at(t, K.kurier, .32); if (k1 > 0) { g.save(); g.globalAlpha = a * k1; const s = 'KURIER', sw = tw(g, s, 30, 9); txt(g, s, 960, ty - 150, 30, P.lab, { align: 'center', ls: 9 }); g.strokeStyle = P.lab; g.lineWidth = 1.3; g.beginPath(); g.moveTo(960 - sw / 2 - 80, ty - 160); g.lineTo(960 - sw / 2 - 20, ty - 160); g.moveTo(960 + sw / 2 + 12, ty - 160); g.lineTo(960 + sw / 2 + 72, ty - 160); g.stroke(); g.restore(); }
+    const title = 'Stadtbote'; const tW = tw(g, title, 190, 1); let x = 960 - tW / 2; for (let i = 0; i < title.length; i++) { const ch = title[i], cw = tw(g, ch, 190, 1), k = eo(lin(t, K.name - .36 + i * .02, K.name - .14 + i * .02)); g.save(); g.globalAlpha = a * k; txt(g, ch, x, ty + (1 - k) * 20, 190, P.inkD, { ls: 1 }); g.restore(); x += cw; }
+    // roter Pinselstrich unter dem Namen
+    const bp = es(lin(t, K.kurier - .3, K.kurier + .2)); if (bp > 0) { const save = [CX, CY, CZ]; CX = W / 2; CY = H / 2; CZ = 1; const pl = poly(wob([[960 - tW / 2 + 10, ty + 44], [960, ty + 52], [960 + tW / 2 - 10, ty + 40]].map(p => [p[0], p[1]]), 3, 88, 6, 70)); brush(g, pl, 0, bp, 16, P.red, 90); CX = save[0]; CY = save[1]; CZ = save[2]; }
+    // Angebot in 2 Wörtern, als Ganzes, fertig auf „zugestellt“
+    const b2 = at(t, K.zugestellt, .3); if (b2 > 0) { g.save(); g.globalAlpha = a * b2; txt(g, 'heute zugestellt', 960, ty + 132 + (1 - b2) * 10, 62, P.red, { align: 'center', ls: .3 }); g.restore(); }
+    // Kontakt-Kartusche
+    const c1 = at(t, K.rufen, .32); if (c1 > 0) { g.save(); g.globalAlpha = a * c1; const bw = 760, bh = 250, bx = 960 - bw / 2, by = 600 + (1 - c1) * 16;
+      g.fillStyle = '#EDE2CC'; g.fillRect(bx, by, bw, bh); g.strokeStyle = P.inkD; g.lineWidth = 2; g.strokeRect(bx, by, bw, bh); g.lineWidth = 1; g.strokeRect(bx + 8, by + 8, bw - 16, bh - 16); g.fillStyle = P.inkD; for (const [cx, cy] of [[bx, by], [bx + bw, by], [bx, by + bh], [bx + bw, by + bh]]) g.fillRect(cx - 5, cy - 5, 11, 11);
+      txt(g, '0621 480 27 90', 960, by + 118, 80, P.inkD, { align: 'center', ls: 2 }); capsLabel(g, 'STADTBOTE-KURIER.DE', 960, by + 192, 26, 1, P.lab, 'center', 5);
+      g.restore();
+      // „sofort“: roter Federstrich unter der Nummer
+      const sp = es(lin(t, K.sofort - .32, K.sofort - .02)); if (sp > 0) { const save = [CX, CY, CZ]; CX = W / 2; CY = H / 2; CZ = 1; const by2 = 600 + 138; const pl = poly(wob([[960 - 270, by2], [960, by2 + 6], [960 + 270, by2 - 4]], 3, 91, 6, 70)); g.save(); g.globalAlpha = a; brush(g, pl, 0, sp, 12, P.red, 92); g.restore(); CX = save[0]; CY = save[1]; CZ = save[2]; } }
+    g.restore(); } G0.save(); G0.globalAlpha = aE; G0.drawImage(LAY, 0, 0); G0.restore(); }
+  // Druckfasern über allem (Tusche sitzt im Papier)
+  g.save(); g.globalCompositeOperation = 'multiply'; g.globalAlpha = .5; g.drawImage(FIBER, 0, 0); g.restore();
+  const f = Math.max(1 - lin(t, 0, .12), lin(t, DUR - .4, DUR)); if (f > 0) { g.fillStyle = `rgba(230,217,190,${f})`; g.fillRect(0, 0, W, H); }
+}
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => {
+  await Promise.all([document.fonts.load(`400 40px ${SERIF}`), document.fonts.load(`600 40px ${SERIF}`), document.fonts.load(`700 40px ${SERIF}`)]); buildPaper(); buildWorld(); frame(0); return true; })(),
+  seek(t) { frame(t); } };
+</script>
+</body></html>

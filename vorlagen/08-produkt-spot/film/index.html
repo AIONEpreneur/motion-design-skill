@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Quellwerk Office – V7</title>
+<style>
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Quellwerk Office V5 – Bild im Stil des KI-Getränke-Spots „EnergyAI Tropical“:
+// fotorealistische Cycles-Renderings (blender/shot_*.py) als Bildfolgen, harte Schnitte, ein Blatt-Durchflug, ein Reißschwenk,
+// V7: keine Schlagworte mehr (das Original hat im Bild keinen Text). Betonung über Push-in, Aufleuchten, Blitzbogen, Neon-Streifen;
+// Text nur als Einzelwort/Zahl am Objekt in Etikett-Typografie. Alle Zeiten aus K (zeiten.py), Bildfolgen über Zeitanker K.map.
+const W = 1920, H = 1080, FPS = 30;
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lerp = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - clamp(x), 3);
+const back = x => { x = clamp(x); const c1 = 1.7, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+
+// Einstellungen: Ordner, Anzahl Bilder (30 fps); Schnitt K.cut[i], Zeitanker K.map[i] = [[Filmzeit, Bildfolgenzeit], …]
+const SHOTS = [
+  { dir: 's1', n: 79, z: 1.08 }, { dir: 's2', n: 63 }, { dir: 's3', n: 124 }, { dir: 's4', n: 113, z: 1.06 },
+  { dir: 's5', n: 73, z: 1.22, cx: 820, cy: 520 }, { dir: 's5c', n: 40, z: 1.12 }, { dir: 's6', n: 98, z: 1.15, cy: 620 },
+  { dir: 's7', n: 115, z: 1.08, cy: 600 }, { dir: 's8', n: 111, z: 1.12 }, { dir: 's9', n: 171, z: 1.1, cx: 880, cy: 600 },
+].map((s, i) => ({ ...s, a: K.cut[i], map: K.map[i] }));
+function shotAt(t) { let i = 0; while (i + 1 < SHOTS.length && t >= SHOTS[i + 1].a) i++; return i; }
+function uAt(s, t) {   // Filmzeit -> Bildfolgenzeit (stückweise linear, außen verlängert)
+  const m = s.map; let j = 0; while (j + 2 < m.length && t > m[j + 1][0]) j++;
+  const [t0, u0] = m[j], [t1, u1] = m[j + 1]; return u0 + (t - t0) * (u1 - u0) / (t1 - t0);
+}
+const cache = new Map();
+function frameImg(dir, f) {
+  const key = dir + f; if (cache.has(key)) return cache.get(key);
+  const im = new Image(); im.src = `frames/${dir}/${String(f).padStart(4, '0')}.jpg`;
+  const p = im.decode().then(() => im).catch(() => null); cache.set(key, p);
+  if (cache.size > 40) cache.delete(cache.keys().next().value);
+  return p;
+}
+async function getFrame(t) {   // Zwischenbilder werden überblendet (Tempo 0,85–1,2×)
+  const i = shotAt(t), s = SHOTS[i];
+  const x = clamp(uAt(s, t) * FPS + 1, 1, s.n), f = Math.floor(x + 1e-6), fr = x - f;
+  return { i, u: uAt(s, t), im: await frameImg(s.dir, f), im2: fr > 0.04 && f < s.n ? await frameImg(s.dir, f + 1) : null, fr };
+}
+
+// ---------- Typografie wie auf dem Etikett ----------
+const F = { brand: '800 1px Poppins', semi: '600 1px Poppins', brush: '400 1px Knewave' };
+function font(kind, px) { return F[kind].replace('1px', px + 'px'); }
+function shadow(on, blur = 18, a = 0.45) { X.shadowColor = on ? `rgba(60,20,10,${a})` : 'transparent'; X.shadowBlur = on ? blur : 0; X.shadowOffsetY = on ? blur * 0.25 : 0; }
+function brandWord(x, y, px, a, align = 'center', second = 'werk') {
+  X.save(); X.globalAlpha = a; X.font = font('brand', px); X.textBaseline = 'middle';
+  const w1 = X.measureText('Quell').width, w2 = X.measureText(second).width;
+  let x0 = align === 'center' ? x - (w1 + w2) / 2 : align === 'right' ? x - w1 - w2 : x;
+  shadow(true, 22, 0.5); X.fillStyle = '#ffffff'; X.fillText('Quell', x0, y); X.fillStyle = '#40e2ea'; X.fillText(second, x0 + w1, y); X.restore();
+}
+function whiteWord(s, x, y, px, a, align = 'center', col = '#ffffff') {
+  X.save(); X.globalAlpha = a; X.font = font('brand', px); X.textBaseline = 'middle'; X.textAlign = align;
+  shadow(true, 20, 0.5); X.fillStyle = col; X.fillText(s, x, y); X.restore();
+}
+function pill(s, x, y, px, a, align = 'center') {
+  X.save(); X.globalAlpha = a; X.font = font('brand', px); X.textBaseline = 'middle';
+  const tw = X.measureText(s).width, pw = tw + px * 1.3, ph = px * 1.55;
+  const x0 = align === 'center' ? x - pw / 2 : align === 'right' ? x - pw : x;
+  shadow(true, 16, 0.35); X.fillStyle = '#f5b80f'; X.beginPath(); X.roundRect(x0, y - ph / 2, pw, ph, ph / 2); X.fill();
+  shadow(false); X.fillStyle = '#461909'; X.textAlign = 'left'; X.fillText(s, x0 + px * 0.65, y + px * 0.04); X.restore();
+}
+function brushWord(s, x, y, px, a, rot = -0.1, align = 'center') {
+  X.save(); X.globalAlpha = a; X.translate(x, y); X.rotate(rot); X.font = font('brush', px); X.textBaseline = 'middle'; X.textAlign = align;
+  shadow(true, 24, 0.55); X.lineJoin = 'round'; X.lineWidth = px * 0.1; X.strokeStyle = '#78143c'; X.strokeText(s, 0, 0);
+  shadow(false); X.fillStyle = '#f7be10'; X.fillText(s, 0, 0); X.restore();
+}
+// Einblendung: beginnt 0,3 s vor dem Wort, steht zum Wort (Pop mit Überschwinger)
+function pop(t, word, lead = 0.3, dur = 0.26) { const k = clamp((t - (word - lead)) / dur); return k; }
+function withPop(k, x, y, fn) {
+  if (k <= 0) return; X.save(); const sc = lerp(0.72, 1, back(k)); X.translate(x, y); X.scale(sc, sc); X.translate(-x, -y); fn(clamp(k * 2.2)); X.restore();
+}
+const out = (t, z, d = 0.12) => 1 - clamp((t - z) / d);
+
+// Push-in (die Kamera „schaut hin“): fertig auf dem Wort, bleibt bis zum Schnitt. [Einstellung, Wort, Mittelpunkt x/y, Zoom]
+const PUSH = [[0, K.leer, 992, 700, 1.16], [1, K.auch, 1580, 760, 1.14], [2, K.dritten, 831, 549, 1.10], [6, K.frisch, 960, 560, 1.12]];
+function pushAt(i, t) {
+  for (const [si, w, px, py, zz] of PUSH) if (si === i) { const k = eo((t - (w - 0.3)) / 0.3); return { p: lerp(1, zz, k), px, py }; }
+  return { p: 1, px: 960, py: 540 };
+}
+// Glanzlicht / Aufleuchten (Stern-Blitz wie ein Lichtreflex): fertig auf dem Wort, klingt ab
+function glint(t, w, x, y, r = 90) {
+  const k = t - (w - 0.22); if (k < 0 || k > 1.1) return;
+  const a = k < 0.22 ? k / 0.22 : Math.exp(-(k - 0.22) * 3.2);
+  X.save(); X.globalCompositeOperation = 'lighter'; X.translate(x, y); X.rotate(0.35);
+  const g = X.createRadialGradient(0, 0, 0, 0, 0, r * 0.7); g.addColorStop(0, `rgba(255,255,245,${0.85 * a})`); g.addColorStop(1, 'rgba(255,230,180,0)');
+  X.fillStyle = g; X.beginPath(); X.arc(0, 0, r * 0.7, 0, 7); X.fill();
+  for (const [len, w2] of [[r * 1.6, 5], [r * 0.9, 3]]) for (let q = 0; q < 4; q++) {
+    X.save(); X.rotate(q * Math.PI / 2 + (w2 === 3 ? Math.PI / 4 : 0));
+    const lg = X.createLinearGradient(0, 0, len, 0); lg.addColorStop(0, `rgba(255,255,240,${a})`); lg.addColorStop(1, 'rgba(255,255,240,0)');
+    X.fillStyle = lg; X.beginPath(); X.moveTo(0, -w2); X.lineTo(len, 0); X.lineTo(0, w2); X.fill(); X.restore();
+  }
+  X.restore();
+}
+// Stapelkante in S3 (gemessen an der Bildfolge), damit „6 Kisten“ neben dem Stapel mitläuft
+const STACK = [[0.9, 1144], [1.43, 1240], [1.7, 1328], [1.97, 1396], [2.23, 1436], [4.2, 1440]];
+const stackX = u => { let j = 0; while (j + 2 < STACK.length && u > STACK[j + 1][0]) j++; const [u0, x0] = STACK[j], [u1, x1] = STACK[j + 1]; return lerp(x0, x1, clamp((u - u0) / (u1 - u0))); };
+
+function supers(t, u) {
+  const i = shotAt(t), cutEnd = i + 1 < SHOTS.length ? SHOTS[i + 1].a : DUR;
+  if (i === 2) {   // Menge ist nicht zählbar (Stapel oben angeschnitten) -> Zahl mit Einheit am Stapel
+    const P = pushAt(2, t), xe = P.px + (stackX(u) - P.px) * P.p;   // Stapelkante in Bildschirm-Koordinaten (inkl. Push-in)
+    const x = Math.min(xe + 44, W - 330), y = P.py + (560 - P.py) * P.p;   // zweizeilig: große Zahl, darunter die Einheit
+    withPop(pop(t, K.sechs), x + 90, y, a => { const o = a * out(t, cutEnd - 0.1); whiteWord('6', x, y - 10, 150, o, 'left'); whiteWord('Kisten', x, y + 92, 64, o, 'left'); });
+  } else if (i === 4) {   // Kartusche sieht aus wie eine kleine Flasche -> ein Wort am Objekt
+    withPop(pop(t, K.gefiltert), 440, 668, a => pill('gefiltert', 440, 668, 54, a * out(t, cutEnd - 0.1)));
+  } else if (i === 7) {   // Intervall ist nicht sichtbar -> Zahl mit Einheit als Aufkleber am Karton
+    withPop(pop(t, K.vier), 1040, 648, a => pill('4 Wochen', 1040, 648, 58, a * out(t, K.karton_auf - 0.15)));
+  } else if (i === 9) {   // Schluss: Marke, Name, Angebot (2 Elemente), Kontakt
+    withPop(pop(t, K.ende), 1420, 250, a => brandWord(1420, 250, 150, a));
+    withPop(pop(t, K.office), 1420, 395, a => brushWord('OFFICE', 1420, 395, 170, a, -0.08));
+    X.save(); X.font = font('brand', 60); const pw = X.measureText('2 Wochen').width + 60 * 1.3, kw = X.measureText('kostenlos').width; X.restore();
+    const gap = 26, tot = pw + gap + kw, x0 = 1420 - tot / 2;
+    withPop(pop(t, K.zwei), x0 + pw / 2, 565, a => pill('2 Wochen', x0 + pw / 2, 565, 60, a));
+    const sk = clamp((t - (K.kostenlos - 0.28)) / 0.24);   // „kostenlos“ landet als Stempel auf seinem Wort
+    if (sk > 0) { X.save(); const sc = lerp(1.5, 1, eo(sk)); X.translate(x0 + pw + gap + kw / 2, 565); X.scale(sc, sc); X.translate(-(x0 + pw + gap + kw / 2), -565);
+      whiteWord('kostenlos', x0 + pw + gap, 565, 60, clamp(sk * 2), 'left'); X.restore(); }
+    withPop(pop(t, K.kostenlos + 0.45), 1420, 660, a => whiteWord('quellwerk-office.de · 0221 555 40 80', 1420, 660, 34, a));
+  }
+}
+
+// ---------- Lichtstreifen (Neon pink/türkis wie beim Öffnen der Dose) ----------
+function streaks(t, t0, t1, seed, n = 5) {
+  if (t < t0 || t > t1) return;
+  const k = (t - t0) / (t1 - t0);
+  X.save(); X.globalCompositeOperation = 'lighter';
+  for (let j = 0; j < n; j++) {
+    const r = Math.sin(seed * 91 + j * 17.3) * 0.5 + 0.5, col = j % 2 ? [255, 70, 200] : [60, 240, 255];
+    const y0 = 300 + 520 * r, amp = 120 + 80 * Math.sin(j * 3.1), ph = t * (2.5 + j * 0.4) + j;
+    const head = clamp(k * 1.6 - j * 0.08), tail = clamp(k * 1.6 - j * 0.08 - 0.45);
+    if (head <= 0) continue;
+    const a = Math.sin(Math.PI * clamp(k)) * 0.9;
+    for (const [lw, al] of [[26, 0.12], [10, 0.35], [3, 1]]) {
+      X.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${al * a})`; X.lineWidth = lw; X.lineCap = 'round'; X.beginPath();
+      for (let s = 0; s <= 40; s++) {
+        const u = lerp(tail, head, s / 40), x = lerp(-100, W + 100, (j % 2 ? 1 - u : u)), y = y0 + amp * Math.sin(u * 5 + ph) + 30 * Math.sin(u * 23 + ph * 2);
+        s ? X.lineTo(x, y) : X.moveTo(x, y);
+      }
+      X.stroke();
+    }
+  }
+  X.restore();
+}
+// Blitzbogen (türkis) über die Zutaten
+function arc(t, t0, t1, x0, y0, x1, y1, seed) {
+  if (t < t0 || t > t1) return;
+  const k = (t - t0) / (t1 - t0), a = Math.sin(Math.PI * k);
+  X.save(); X.globalCompositeOperation = 'lighter';
+  const fl = Math.floor(t * 30);
+  for (const [lw, al] of [[18, 0.15], [6, 0.45], [2, 1]]) {
+    X.strokeStyle = `rgba(120,250,255,${al * a})`; X.lineWidth = lw; X.beginPath();
+    for (let s = 0; s <= 28; s++) {
+      const u = s / 28, jit = Math.sin((s + 1) * 12.9898 + fl * 78.233 + seed) * 43758.5453; const j = (jit - Math.floor(jit) - 0.5) * 60 * Math.sin(Math.PI * u);
+      const x = lerp(x0, x1, u), y = lerp(y0, y1, u) + j + Math.sin(u * Math.PI) * -80;
+      s ? X.lineTo(x, y) : X.moveTo(x, y);
+    }
+    X.stroke();
+  }
+  X.restore();
+}
+// Dampf über der Tasse
+function steam(t, t0, t1, cx, cy) {
+  if (t < t0 || t > t1) return;
+  X.save(); X.globalCompositeOperation = 'screen'; X.filter = 'blur(10px)';
+  for (let j = 0; j < 3; j++) {
+    X.strokeStyle = `rgba(255,245,230,${0.18 * clamp((t - t0) / 0.5)})`; X.lineWidth = 26 - j * 5; X.beginPath();
+    for (let s = 0; s <= 30; s++) { const u = s / 30, y = cy - u * 360, x = cx + (j - 1) * 50 + Math.sin(u * 6 + t * 2 + j) * 30 * u; s ? X.lineTo(x, y) : X.moveTo(x, y); }
+    X.stroke();
+  }
+  X.restore();
+}
+
+// ---------- Nachbearbeitung: Lichthof (Bloom), warme Vignette ----------
+const glowC = document.createElement('canvas'); glowC.width = W / 4; glowC.height = H / 4; const G = glowC.getContext('2d');
+function post() {
+  G.filter = 'brightness(0.9) contrast(1.6) blur(6px)'; G.clearRect(0, 0, W / 4, H / 4); G.drawImage(cv, 0, 0, W / 4, H / 4);
+  X.save(); X.globalCompositeOperation = 'screen'; X.globalAlpha = 0.28; X.drawImage(glowC, 0, 0, W, H); X.restore();
+  const g = X.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
+  g.addColorStop(0, 'rgba(40,15,0,0)'); g.addColorStop(1, 'rgba(40,15,0,0.45)');
+  X.fillStyle = g; X.fillRect(0, 0, W, H);
+}
+
+async function seek(t) {
+  t = clamp(t, 0, DUR - 1e-3);
+  const { i, u, im, im2, fr } = await getFrame(t);
+  X.setTransform(1, 0, 0, 1, 0, 0); X.globalAlpha = 1; X.filter = 'none'; X.globalCompositeOperation = 'source-over';
+  X.fillStyle = '#000'; X.fillRect(0, 0, W, H);
+  // Reißschwenk S8 -> S9: Bild fliegt seitlich mit Richtungsunschärfe
+  const [wA, wB, wC] = K.whip;
+  let dx = 0, blur = 0;
+  if (t >= wA && t < wB) { const k = (t - wA) / (wB - wA); dx = -k * k * W * 0.9; blur = k; }
+  if (t >= wB && t < wC) { const k = 1 - (t - wB) / (wC - wB); dx = k * k * W * 0.9; blur = k; }
+  // Bildausschnitt (Produkt größer, wie im Original) + Farbgebung: mehr Kontrast und Sättigung, warmes Gegenlicht
+  const S = SHOTS[i], z = S.z || 1, zx = S.cx || 960, zy = S.cy || 540, P = pushAt(i, t);
+  X.setTransform(z * P.p, 0, 0, z * P.p, P.p * (zx - zx * z) + P.px - P.px * P.p, P.p * (zy - zy * z) + P.py - P.py * P.p);
+  X.filter = 'contrast(1.25) saturate(1.18) brightness(0.95)';
+  if (im) {
+    if (blur > 0.01) {
+      const n = 14; X.globalAlpha = 1 / n * 1.6;
+      for (let s = 0; s < n; s++) X.drawImage(im, dx + (s - n / 2) * blur * 26, 0, W, H);
+      X.globalAlpha = 1;
+    } else X.drawImage(im, 0, 0, W, H);
+    if (im2 && blur <= 0.01) { X.globalAlpha = fr; X.drawImage(im2, 0, 0, W, H); X.globalAlpha = 1; }
+  }
+  X.setTransform(1, 0, 0, 1, 0, 0); X.filter = 'none';
+  { // warmes Sonnenlicht von oben rechts, satter unten
+    X.save(); X.globalCompositeOperation = 'soft-light';
+    const g = X.createRadialGradient(W * 0.72, H * 0.2, 0, W * 0.72, H * 0.2, W * 0.9);
+    g.addColorStop(0, 'rgba(255,200,130,0.3)'); g.addColorStop(0.55, 'rgba(225,110,50,0.14)'); g.addColorStop(1, 'rgba(50,15,5,0.6)');
+    X.fillStyle = g; X.fillRect(0, 0, W, H); X.restore();
+  }
+  // Effekte
+  if (t > K.wasser_an && t < SHOTS[4].a) {   // Wasserstrahl aus dem Hahn in die Flasche, leuchtet auf „Leitung“ auf
+    const k = clamp((t - K.wasser_an) / 0.12), y0 = 338, y1 = lerp(y0, 700, k);
+    X.save(); X.globalCompositeOperation = 'screen';
+    const g = X.createLinearGradient(946, 0, 974, 0); g.addColorStop(0, 'rgba(200,235,255,0.15)'); g.addColorStop(0.35, 'rgba(255,255,255,0.75)'); g.addColorStop(0.6, 'rgba(210,240,255,0.35)'); g.addColorStop(1, 'rgba(200,235,255,0.1)');
+    X.globalAlpha = 1; X.shadowColor = 'rgba(200,245,255,0.9)'; X.shadowBlur = 30 * Math.exp(-Math.max(0, t - K.wasser_an - 0.1) * 2.5);
+    X.fillStyle = g; X.beginPath(); X.moveTo(948, y0); X.lineTo(972, y0);
+    for (let yy = y0; yy <= y1; yy += 12) X.lineTo(972 + Math.sin(yy * 0.08 + t * 40) * 1.5, yy);
+    X.lineTo(948, y1); X.closePath(); X.fill(); X.restore();
+  }
+  arc(t, K.gefiltert - 0.15, K.gefiltert + 0.5, 420, 520, 1250, 420, 1);
+  arc(t, K.sprudelnd - 0.1, K.sprudelnd + 0.6, 600, 700, 1400, 560, 2);
+  streaks(t, K.ohne + 0.03, K.ohne + 1.1, 3, 6);
+  streaks(t, K.frisch2 - 0.02, K.frisch2 + 0.9, 7, 4);
+  steam(t, SHOTS[6].a + 0.05, SHOTS[7].a, 960, 560);
+  if (i === 4) for (const [x, y] of [[1284, 160], [1576, 574], [1192, 777]]) glint(t, K.gekuehlt, x, y, 80);   // Eiswürfel blitzen auf „gekühlt“
+  if (i === 2) glint(t, K.dritten, 831, 549, 110);                                                // Schild „3. OG“ leuchtet auf
+  post();
+  supers(t, u);
+  // Anfang/Ende
+  const fade = Math.max(1 - clamp(t / 0.15), clamp((t - (DUR - 0.6)) / 0.5));
+  if (fade > 0) { X.fillStyle = `rgba(0,0,0,${fade})`; X.fillRect(0, 0, W, H); }
+}
+const ready = (async () => {
+  for (const [n, f, wgt] of [['Poppins', 'Poppins-ExtraBold.ttf', '800'], ['Poppins', 'Poppins-SemiBold.ttf', '600'], ['Knewave', 'Knewave-Regular.ttf', '400']]) {
+    const ff = new FontFace(n, `url(fonts/${f})`, { weight: wgt }); await ff.load(); document.fonts.add(ff);
+  }
+  await seek(0);
+})();
+window.FILM = { duration: DUR, width: W, height: H, ready, seek };
+</script>
+</body>
+</html>

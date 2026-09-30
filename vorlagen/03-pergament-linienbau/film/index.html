@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Bauhütte Architekten – V7</title>
+<style>
+@font-face{font-family:'CZ';src:url(Cinzel-VF.ttf);font-weight:400 900}
+@font-face{font-family:'PM';src:url(IBMPlexMono-Medium.ttf);font-weight:500}
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script src="lib.js"></script>
+<script src="welt.js"></script>
+<script src="haus.js"></script>
+<script src="film.js"></script>
+<script>
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => {
+  await Promise.all([document.fonts.load('800 80px CZ'), document.fonts.load('500 30px PM')]); makeTex(); frame(0); return true; })(),
+  seek(t) { frame(t); } };
+</script>
+</body></html>

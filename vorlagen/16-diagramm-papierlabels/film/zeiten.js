@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Charon)
+const K = {"gas": 0.58, "betrag": 1.57, "euro": 2.67, "jahr": 2.95, "kessel": 4.25, "keller": 4.81, "alt25": 5.47, "alt": 6.28, "faellt": 7.01, "januar": 7.55, "aus": 8.06, "kalt": 9.1, "dabei": 9.7, "draussen": 10.28, "waerme": 10.76, "sogar": 11.29, "minus": 11.81, "grad": 12.63, "werk": 13.46, "pumpe": 14.63, "drei": 15.48, "tagen": 15.75, "antrag": 16.89, "bis": 17.96, "siebzig": 18.3, "zuschuss": 19.19, "danach": 20.2, "warm": 20.87, "heizkosten": 21.4, "sinken": 22.11, "drittel": 22.87, "marke": 24.14, "haustechnik": 24.64, "beratung": 25.77, "kostenlos": 26.89};
+const DUR = 29.35;

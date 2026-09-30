@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Grünwerk Gartenbau – V7</title>
+<style>
+@font-face{font-family:'KA';src:url(Kalam-Bold.ttf);font-weight:700}
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script src="lib.js"></script>
+<script src="figuren.js"></script>
+<script src="film.js"></script>
+<script>
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => {
+  await document.fonts.load('700 80px KA'); makeGrain(); frame(0); return true; })(),
+  seek(t) { frame(t); } };
+</script>
+</body></html>

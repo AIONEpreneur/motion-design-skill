@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Werkseite – V7</title>
+<style>
+@font-face{font-family:'GA';src:url(EBGaramond.ttf)}
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Werkseite V5 – im Stil der dunklen „Story“-Panels (Jack Roberts / Claude Design): Nachtschwarz mit warmer Mitte,
+// Horizont-Glut, Creme-Serife, Terrakotta-Akzent, gerissenes Goldpapier mit Gravurlinien, Tuschezeichnung auf Knitterpapier,
+// feiner Telefon-Umriss, Wellenringe beim Treffer, gepunktete Bogenpfeile. Siehe ../STILBIBEL.md
+const W = 1920, H = 1080;
+// V7: alle Zeiten kommen aus zeiten.js (zeiten.py), keine fest eingetragenen Werte mehr
+const P = { bg: '#08080a', cream: '#f4f1ea', disc: '#e9e3da', terra: '#d9755a', terraL: '#ec8669', gold: '#b48837', goldD: '#8a6524', paper: '#d6d2c9', ink: '#1d1a17', line: '#a4a4a6', dim: '#6d6a66' };
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - x, 3), e2 = x => 1 - Math.pow(1 - x, 2), eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eback = x => { if (x <= 0) return 0; const c1 = 1.8, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function rgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function rgba(h, a) { const [r, g, b] = rgb(h); return `rgba(${r},${g},${b},${a})`; }
+const idle = (t, f, a, ph = 0) => Math.sin(t * f + ph) * a;
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function trace(g, pts) { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); }
+function partial(pts, p) { if (p >= 1) return pts; if (p <= 0) return [pts[0]]; let L = 0; const d = [0]; for (let i = 1; i < pts.length; i++) { L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); d.push(L); }
+  const tg = L * p, o = [pts[0]]; for (let i = 1; i < pts.length; i++) { if (d[i] <= tg) o.push(pts[i]); else { const k = (tg - d[i - 1]) / (d[i] - d[i - 1] || 1); o.push([mix(pts[i - 1][0], pts[i][0], k), mix(pts[i - 1][1], pts[i][1], k)]); break; } } return o; }
+function curve(p0, c, p1, n = 50) { const o = []; for (let i = 0; i <= n; i++) { const k = i / n; o.push([(1 - k) * (1 - k) * p0[0] + 2 * (1 - k) * k * c[0] + k * k * p1[0], (1 - k) * (1 - k) * p0[1] + 2 * (1 - k) * k * c[1] + k * k * p1[1]]); } return o; }
+function stroke(g, pts, col, lw, p = 1, dash = null) { if (p <= 0) return; g.save(); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round'; if (dash) g.setLineDash(dash); trace(g, partial(pts, p)); g.stroke(); g.restore(); }
+function circ(cx, cy, r, a0 = -Math.PI / 2, a1 = Math.PI * 1.5, n = 90) { const o = []; for (let i = 0; i <= n; i++) { const a = mix(a0, a1, i / n); o.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } return o; }
+
+// ---------- Serifen-Typografie: Wörter blenden weich ein (leichtes Steigen), im Sprechtakt ----------
+const FC = new Map();
+function fnt(g, f, s) { g.font = `${s}px ${f}`; }
+function tw(s, f, sz, ls = 0) { const g = X; g.save(); fnt(g, f, sz); g.letterSpacing = ls + 'px'; const w = g.measureText(s).width; g.restore(); return w; }
+// parts = [[wort, tEnde, farbe?, font?]]; Wort ist zu tEnde voll sichtbar (Einblendung .3 s davor)
+function words(g, parts, x, y, o = {}) {
+  const f = o.font || 'GA', sz = o.size || 90, ls = o.ls ?? 0, sp = tw(' ', f, sz) * (o.spf ?? 1), t = o.t, a = o.a ?? 1; if (a <= 0) return;
+  const ws = parts.map(p => tw(p[0], p[3] || f, sz, ls)); const tot = ws.reduce((s, v) => s + v, 0) + sp * (parts.length - 1);
+  let xx = o.align === 'left' ? x : o.align === 'right' ? x - tot : x - tot / 2;
+  g.save(); g.textBaseline = 'alphabetic'; g.letterSpacing = ls + 'px';
+  parts.forEach((p, i) => { const k = eo(lin(t, p[1] - (o.dur ?? .3), p[1])); if (k > 0) { g.save(); g.globalAlpha = a * k; fnt(g, p[3] || f, sz); g.fillStyle = p[2] || o.col || P.cream;
+      if (o.glow) { g.shadowColor = 'rgba(255,230,200,.25)'; g.shadowBlur = 18; } g.fillText(p[0], xx, y + (1 - k) * 14); g.restore(); } xx += ws[i] + sp; });
+  g.restore(); return tot;
+}
+function pill(g, cx, cy, s, sz, t0, o = {}) { const k = eo(lin(o.t, t0 - .3, t0)); if (k <= 0) return; const a = (o.a ?? 1) * k, w = tw(s, o.font || 'GA', sz) + sz * .9, h = sz * 1.35;
+  g.save(); g.globalAlpha = a; g.translate(cx, cy + (1 - k) * 10); rr(g, -w / 2, -h / 2, w, h, o.r ?? 10); g.fillStyle = o.bg || 'rgba(34,31,28,.88)'; g.fill(); g.strokeStyle = o.stroke || 'rgba(255,245,230,.10)'; g.lineWidth = 1.5; g.stroke();
+  fnt(g, o.font || 'GA', sz); g.fillStyle = o.col || P.cream; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s, 0, sz * .06); g.restore(); }
+
+// ---------- Hintergrund: Nachtschwarz, warme Mitte, Horizont-Glut, Korn ----------
+let BG;
+function mkBg() { const c = mk(W + 400, H + 300), g = c.getContext('2d'), w = c.width, h = c.height, R = rng(5); g.fillStyle = P.bg; g.fillRect(0, 0, w, h);
+  let gr = g.createRadialGradient(w / 2, h * .5, 20, w / 2, h * .52, w * .52); gr.addColorStop(0, 'rgba(38,34,30,1)'); gr.addColorStop(.45, 'rgba(24,22,21,.9)'); gr.addColorStop(1, 'rgba(8,8,10,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  // Horizont-Glut: flacher Bogen unten mit goldener Kante
+  g.save(); g.translate(w / 2, h - 150 + 1180); g.scale(1, .16);
+  gr = g.createRadialGradient(0, -1180, 1080, 0, -1180 + 60, 1240); gr.addColorStop(0, 'rgba(60,26,14,0)'); gr.addColorStop(.86, 'rgba(59,25,13,.55)'); gr.addColorStop(.97, 'rgba(160,118,80,.55)'); gr.addColorStop(1, 'rgba(60,26,14,0)');
+  g.restore();
+  g.save(); g.filter = 'blur(10px)'; g.strokeStyle = 'rgba(200,150,105,.5)'; g.lineWidth = 8; g.beginPath(); g.ellipse(w / 2, h - 90, 760, 120, 0, Math.PI * 1.08, Math.PI * 1.92); g.stroke();
+  g.filter = 'blur(40px)'; g.fillStyle = 'rgba(100,48,22,.45)'; g.beginPath(); g.ellipse(w / 2, h - 20, 820, 150, 0, 0, 7); g.fill(); g.restore();
+  g.save(); g.filter = 'blur(1.2px)'; g.strokeStyle = 'rgba(235,205,170,.8)'; g.lineWidth = 2.4; g.beginPath(); g.ellipse(w / 2, h - 88, 700, 118, 0, Math.PI * 1.12, Math.PI * 1.88); g.stroke(); g.restore();
+  const im = g.getImageData(0, 0, w, h), d = im.data; for (let i = 0; i < d.length; i += 4) { const v = (R() + R() - 1) * 7; d[i] += v; d[i + 1] += v; d[i + 2] += v; } g.putImageData(im, 0, 0);
+  return c; }
+
+// ---------- Papier: gerissene Kanten, Gold mit Gravur, Knitterpapier mit Tusche ----------
+function tornPoly(w, h, R, amp = 7) { const pts = []; const edge = (x0, y0, x1, y1, nx, ny) => { const L = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(L / 5); let lo = 0;
+    for (let i = 0; i < n; i++) { const k = i / n; lo = lo * .7 + (R() - .5) * amp * .9; const hi = (R() - .5) * amp * .7; pts.push([mix(x0, x1, k) + nx * (lo + hi), mix(y0, y1, k) + ny * (lo + hi)]); } };
+  edge(0, 0, w, 0, 0, 1); edge(w, 0, w, h, -1, 0); edge(w, h, 0, h, 0, -1); edge(0, h, 0, 0, 1, 0); return pts; }
+function paperCanvas(w, h, kind, seed, draw) { const pad = 40, c = mk(w + pad * 2, h + pad * 2), g = c.getContext('2d'), R = rng(seed); const poly = tornPoly(w, h, R, kind === 'gold' ? 9 : 8).map(p => [p[0] + pad, p[1] + pad]);
+  g.save(); g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 22; g.shadowOffsetY = 10; trace(g, poly); g.closePath(); g.fillStyle = kind === 'gold' ? '#e9d7a6' : '#f3f0ea'; g.fill(); g.restore();
+  const inner = poly.map(p => [mix(p[0], pad + w / 2, 6 / w * 2), mix(p[1], pad + h / 2, 6 / h * 2)]);
+  g.save(); trace(g, inner); g.closePath(); g.clip();
+  if (kind === 'gold') { g.fillStyle = P.gold; g.fillRect(0, 0, c.width, c.height);
+    for (let i = 0; i < 260; i++) { const x = R() * c.width; g.strokeStyle = R() < .5 ? `rgba(120,80,20,${.05 + R() * .1})` : `rgba(230,190,110,${.05 + R() * .1})`; g.lineWidth = .8 + R() * 2; g.beginPath(); for (let y = 0; y <= c.height; y += 12) { const xx = x + Math.sin(y / 60 + i) * 3; y ? g.lineTo(xx, y) : g.moveTo(xx, y); } g.stroke(); }
+    const vg = g.createRadialGradient(c.width / 2, c.height / 2, 10, c.width / 2, c.height / 2, Math.max(w, h) * .7); vg.addColorStop(0, 'rgba(210,160,70,.25)'); vg.addColorStop(1, 'rgba(90,60,15,.35)'); g.fillStyle = vg; g.fillRect(0, 0, c.width, c.height);
+  } else if (kind === 'white') { g.fillStyle = '#d9d5cd'; g.fillRect(0, 0, c.width, c.height);
+    for (let i = 0; i < 70; i++) { const x = R() * c.width, y = R() * c.height; g.fillStyle = R() < .5 ? `rgba(255,255,255,${.05 + R() * .08})` : `rgba(90,85,80,${.03 + R() * .05})`; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 4; k++) g.lineTo(x + (R() - .5) * 160, y + (R() - .5) * 160); g.closePath(); g.fill(); }
+    const vg = g.createRadialGradient(c.width * .45, c.height * .4, 10, c.width / 2, c.height / 2, Math.max(w, h) * .75); vg.addColorStop(0, 'rgba(255,255,255,.25)'); vg.addColorStop(1, 'rgba(70,65,60,.25)'); g.fillStyle = vg; g.fillRect(0, 0, c.width, c.height);
+  } else if (kind === 'stripe') { g.fillStyle = '#d8d4cc'; g.fillRect(0, 0, c.width, c.height); g.save(); g.translate(c.width / 2, c.height / 2); g.rotate(.6); g.fillStyle = '#17171a'; for (let x = -800; x < 800; x += 26) g.fillRect(x, -800, 13, 1600); g.restore(); }
+  const im = g.getImageData(0, 0, c.width, c.height), d = im.data; for (let i = 0; i < d.length; i += 4) { const v = (R() + R() - 1) * 10; d[i] += v; d[i + 1] += v; d[i + 2] += v; } g.putImageData(im, 0, 0);
+  if (draw) { g.save(); g.translate(pad, pad); draw(g, w, h, R); g.restore(); }
+  g.restore(); return c; }
+function drawPaper(g, c, x, y, s, rot, a = 1) { if (a <= 0 || s <= 0) return; g.save(); g.globalAlpha *= a; g.translate(x, y); g.rotate(rot); g.scale(s, s); g.drawImage(c, -c.width / 2, -c.height / 2); g.restore(); }
+// Gravurlinien (auf Gold)
+function engrave(g, cx, cy, r, R) { g.save(); g.strokeStyle = 'rgba(55,36,8,.62)'; g.lineWidth = 1.5;
+  for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(cx - r * .6, cy + r * .3, r * (.6 + i * .45), -1.2, .4); g.stroke(); }
+  g.beginPath(); g.arc(cx, cy, r * .32, 0, 7); g.stroke(); for (let i = 0; i < 6; i++) { const a = -2.6 + i * .28; g.beginPath(); g.moveTo(cx - r * .6, cy + r * .3); g.lineTo(cx - r * .6 + Math.cos(a) * r * 1.6, cy + r * .3 + Math.sin(a) * r * 1.6); g.stroke(); }
+  g.beginPath(); g.moveTo(cx - r * 1.3, cy - r * .9); g.lineTo(cx - r * 1.3, cy + r * 1.2); g.stroke(); g.setLineDash([3, 5]); g.beginPath(); g.arc(cx, cy, r * .5, -.8, .9); g.stroke(); g.restore(); }
+function star4(g, cx, cy, r, col, rot = 0) { g.save(); g.translate(cx, cy); g.rotate(rot); g.beginPath(); for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, rr2 = i % 2 ? r * .3 : r; g.lineTo(Math.cos(a) * rr2, Math.sin(a) * rr2); } g.closePath(); g.fillStyle = col; g.fill(); g.restore(); }
+// Jahresringe (Tischler) als Gravur
+function treeRings(g, cx, cy, r, R) { g.save(); g.strokeStyle = 'rgba(55,36,8,.6)'; g.lineWidth = 1.4; for (let k = 1; k <= 7; k++) { g.beginPath(); for (let i = 0; i <= 64; i++) { const a = i / 64 * Math.PI * 2, rr2 = r * k / 7 * (1 + .06 * Math.sin(a * 3 + k) + .03 * Math.sin(a * 7 + k * 2)); i ? g.lineTo(cx + Math.cos(a) * rr2 * 1.15, cy + Math.sin(a) * rr2) : g.moveTo(cx + Math.cos(a) * rr2 * 1.15, cy + Math.sin(a) * rr2); } g.stroke(); }
+  g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + r * 1.1, cy - r * .35); g.stroke(); g.restore(); }
+// Tuschezeichnungen
+function inkStyle(g, lw = 2.2) { g.strokeStyle = P.ink; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round'; }
+function portrait(g, cx, cy, s) { g.save(); g.translate(cx, cy); g.scale(s, s); inkStyle(g, 2.4);
+  // Schultern + Kragen
+  g.beginPath(); g.moveTo(-150, 205); g.quadraticCurveTo(-120, 130, -30, 118); g.moveTo(150, 205); g.quadraticCurveTo(120, 130, 30, 118); g.stroke();
+  g.beginPath(); g.moveTo(-30, 118); g.lineTo(0, 150); g.lineTo(30, 118); g.stroke();
+  g.beginPath(); g.moveTo(-24, 78); g.lineTo(-26, 122); g.moveTo(24, 78); g.lineTo(26, 122); g.stroke();
+  // Gesicht
+  g.beginPath(); g.moveTo(-60, -40); g.bezierCurveTo(-64, 20, -48, 70, 0, 88); g.bezierCurveTo(48, 70, 64, 20, 60, -40); g.fillStyle = '#f1eee8'; g.fill(); g.stroke();
+  g.beginPath(); g.ellipse(-64, 5, 8, 16, 0, 0, 7); g.moveTo(72, 5); g.ellipse(64, 5, 8, 16, 0, 0, 7); g.fillStyle = '#efeae3'; g.fill(); g.stroke();
+  // Haare
+  g.beginPath(); g.moveTo(-63, -8); g.bezierCurveTo(-78, -70, -44, -112, 0, -110); g.bezierCurveTo(52, -112, 80, -78, 63, -8); g.bezierCurveTo(60, -30, 52, -46, 38, -52); g.bezierCurveTo(20, -40, -6, -38, -18, -56); g.bezierCurveTo(-30, -44, -50, -38, -63, -8); g.fillStyle = '#2b2623'; g.fill(); g.stroke();
+  g.save(); g.clip(); g.strokeStyle = 'rgba(200,190,180,.35)'; g.lineWidth = 1.4; for (let x = -90; x < 90; x += 8) { g.beginPath(); g.moveTo(x, -110); g.lineTo(x + 30, -40); g.stroke(); } g.restore();
+  // Brauen, Augen, Nase, Mund, Wangen, Schraffur
+  inkStyle(g, 2.6); g.beginPath(); g.moveTo(-40, -22); g.quadraticCurveTo(-27, -28, -14, -23); g.moveTo(14, -23); g.quadraticCurveTo(27, -28, 40, -22); g.stroke();
+  inkStyle(g, 2); [[-27, -5], [27, -5]].forEach(([x, y]) => { g.beginPath(); g.moveTo(x - 12, y); g.quadraticCurveTo(x, y - 7, x + 12, y); g.stroke(); g.beginPath(); g.arc(x, y - 1, 3.6, 0, 7); g.fillStyle = P.ink; g.fill(); });
+  g.beginPath(); g.moveTo(4, 0); g.lineTo(9, 28); g.quadraticCurveTo(4, 34, -3, 31); g.stroke();
+  g.beginPath(); g.moveTo(-15, 52); g.quadraticCurveTo(0, 49, 15, 52); g.stroke();
+  g.fillStyle = 'rgba(220,120,110,.18)'; g.beginPath(); g.ellipse(-36, 26, 13, 8, 0, 0, 7); g.ellipse(36, 26, 13, 8, 0, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(30,26,23,.35)'; g.lineWidth = 1.2; for (let i = 0; i < 6; i++) { g.beginPath(); g.moveTo(-52 + i * 5, 30 + i * 6); g.lineTo(-40 + i * 5, 22 + i * 6); g.stroke(); }
+  g.restore(); }
+function cabinet(g, cx, cy, s, detail = 1) { g.save(); g.translate(cx, cy); g.scale(s, s); inkStyle(g, 2.4);
+  g.strokeRect(-110, -140, 220, 280); g.beginPath(); g.moveTo(-120, -140); g.lineTo(120, -140); g.moveTo(-120, -150); g.lineTo(120, -150); g.stroke();
+  g.beginPath(); g.moveTo(0, -140); g.lineTo(0, 90); g.moveTo(-110, 90); g.lineTo(110, 90); g.moveTo(-110, 115); g.lineTo(110, 115); g.stroke();
+  g.strokeRect(-96, -126, 84, 204); g.strokeRect(12, -126, 84, 204);
+  g.lineWidth = 3.2; g.beginPath(); g.moveTo(-18, -20); g.lineTo(-18, 10); g.moveTo(18, -20); g.lineTo(18, 10); g.moveTo(-20, 103); g.lineTo(20, 103); g.moveTo(-20, 128); g.lineTo(20, 128); g.stroke();
+  if (detail) { g.strokeStyle = 'rgba(30,26,23,.35)'; g.lineWidth = 1.1; for (let i = 0; i < 9; i++) { g.beginPath(); const x = -88 + i * 9; g.moveTo(x, -118); g.bezierCurveTo(x + 6, -60, x - 4, 0, x + 3, 70); g.stroke(); } for (let i = 0; i < 12; i++) { g.beginPath(); g.moveTo(96 - i * 7, 78); g.lineTo(96, 78 - i * 7 - 7); g.stroke(); } }
+  g.restore(); }
+function stairs(g, cx, cy, s) { g.save(); g.translate(cx, cy); g.scale(s, s); inkStyle(g, 2.4); g.beginPath(); g.moveTo(-120, 120); for (let i = 0; i < 5; i++) { g.lineTo(-120 + i * 48, 120 - (i + 1) * 45); g.lineTo(-72 + i * 48, 120 - (i + 1) * 45); } g.lineTo(120, 120); g.closePath(); g.stroke();
+  g.beginPath(); g.moveTo(-120, 70); g.lineTo(130, -150); g.stroke(); for (let i = 0; i < 5; i++) { g.beginPath(); g.moveTo(-96 + i * 48, 120 - (i + 1) * 45); g.lineTo(-96 + i * 48 + 10, 120 - (i + 1) * 45 - 38); g.stroke(); }
+  g.strokeStyle = 'rgba(30,26,23,.3)'; g.lineWidth = 1.1; for (let i = 0; i < 14; i++) { g.beginPath(); g.moveTo(-110 + i * 16, 118); g.lineTo(-110 + i * 16 + 12, 90); g.stroke(); } g.restore(); }
+function table(g, cx, cy, s) { g.save(); g.translate(cx, cy); g.scale(s, s); inkStyle(g, 2.4); g.beginPath(); g.moveTo(-140, -20); g.lineTo(140, -20); g.lineTo(120, -44); g.lineTo(-120, -44); g.closePath(); g.stroke();
+  g.beginPath(); g.moveTo(-140, -20); g.lineTo(-140, -8); g.lineTo(140, -8); g.lineTo(140, -20); g.stroke(); [[-122, 0], [122, 0], [-100, -30], [100, -30]].forEach(([x, y], i) => { g.beginPath(); g.moveTo(x, -8 + (i > 1 ? -12 : 0)); g.lineTo(x + (i % 2 ? 4 : -4), 100 + y); g.stroke(); });
+  g.strokeStyle = 'rgba(30,26,23,.3)'; g.lineWidth = 1.1; for (let i = 0; i < 10; i++) { g.beginPath(); g.moveTo(-110 + i * 24, -40); g.lineTo(-100 + i * 24, -24); g.stroke(); } g.restore(); }
+
+// ---------- Held: Telefon-Umriss, Logo-Scheibe, Ringe ----------
+function phone(g, cx, cy, w, h, screen, o = {}) { const a = o.a ?? 1; if (a <= 0) return; const r = w * .15, p = o.p ?? 1; g.save(); g.globalAlpha *= a; g.translate(cx, cy); if (o.rot) g.rotate(o.rot);
+  g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 40; g.shadowOffsetY = 20; rr(g, -w / 2, -h / 2, w, h, r); g.fillStyle = '#0b0b0d'; g.globalAlpha *= clamp(p * 2 - 1); g.fill(); g.restore();
+  if (screen && p >= 1) { g.save(); rr(g, -w / 2 + 12, -h / 2 + 12, w - 24, h - 24, r - 10); g.clip(); g.translate(-w / 2 + 12, -h / 2 + 12); screen(g, w - 24, h - 24); g.restore(); }
+  const outline = []; { const n = 120; for (let i = 0; i <= n; i++) { const k = i / n; } }
+  g.save(); g.setLineDash([]); rr(g, -w / 2, -h / 2, w, h, r); g.strokeStyle = P.line; g.lineWidth = 3.4; if (p < 1) { const L = 2 * (w + h); g.setLineDash([L * p, L]); } g.stroke(); g.restore();
+  if (p >= 1) { rr(g, -w / 2 + 6, -h / 2 + 6, w - 12, h - 12, r - 5); g.strokeStyle = 'rgba(160,160,165,.35)'; g.lineWidth = 1.5; g.stroke();
+    rr(g, -w * .14, -h / 2 + 22, w * .28, 26, 13); g.fillStyle = '#050506'; g.fill(); g.strokeStyle = 'rgba(160,160,165,.25)'; g.stroke();
+    g.fillStyle = P.line; g.fillRect(-w / 2 - 5, -h * .22, 3, 60); g.fillRect(-w / 2 - 5, -h * .1, 3, 60); g.fillRect(w / 2 + 2, -h * .18, 3, 90); }
+  g.restore(); }
+function rings(g, cx, cy, t, t0, n = 3, r0 = 160, col = '255,240,225') { for (let i = 0; i < n; i++) { const k = lin(t, t0 + i * .16, t0 + i * .16 + 1.3); if (k <= 0 || k >= 1) continue; g.save(); g.strokeStyle = `rgba(${col},${.45 * (1 - k)})`; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, r0 + e2(k) * 260, 0, 7); g.stroke(); g.restore(); } }
+function guide(g, cx, cy, r, a) { if (a <= 0) return; g.save(); g.globalAlpha *= a; g.strokeStyle = 'rgba(230,225,215,.22)'; g.lineWidth = 1.5; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.stroke();
+  g.strokeStyle = 'rgba(230,225,215,.10)'; g.beginPath(); g.arc(cx, cy, r * 1.62, 0, 7); g.stroke(); for (let i = 0; i < 8; i++) { const an = i * Math.PI / 4 + Math.PI / 8; g.beginPath(); g.moveTo(cx + Math.cos(an) * r * 1.08, cy + Math.sin(an) * r * 1.08); g.lineTo(cx + Math.cos(an) * r * 1.5, cy + Math.sin(an) * r * 1.5); g.stroke(); }
+  g.beginPath(); g.moveTo(cx - r * 1.9, cy); g.lineTo(cx - r * 1.15, cy); g.moveTo(cx + r * 1.15, cy); g.lineTo(cx + r * 1.9, cy); g.moveTo(cx, cy - r * 1.9); g.lineTo(cx, cy - r * 1.15); g.stroke(); g.restore(); }
+// Logo-Scheibe: Creme-Kugel, dunkler Erdbogen mit Linien, Terrakotta-Sonne; Werkseite: Dachgiebel auf dem Horizont
+function disc(g, cx, cy, r, o = {}) { const fill = o.fill ?? 1, sun = o.sun ?? 1, a = o.a ?? 1; if (a <= 0 || r <= 0) return; g.save(); g.globalAlpha *= a;
+  g.save(); g.shadowColor = 'rgba(255,235,210,.28)'; g.shadowBlur = 50 * fill; g.beginPath(); g.arc(cx, cy, r, 0, 7);
+  const gr = g.createRadialGradient(cx - r * .2, cy - r * .45, r * .1, cx, cy, r * 1.05); gr.addColorStop(0, '#f6f2ec'); gr.addColorStop(.7, '#e6dfd5'); gr.addColorStop(1, '#cfc6ba');
+  g.fillStyle = gr; g.globalAlpha *= fill; g.fill(); g.restore();
+  g.save(); g.beginPath(); g.arc(cx, cy, r, 0, 7); g.clip();
+  if (fill > 0) { g.globalAlpha *= fill; const hy = cy + r * .42;
+    const sg = g.createRadialGradient(cx, hy, 2, cx, hy, r * .9); sg.addColorStop(0, `rgba(236,134,105,${.55 * sun})`); sg.addColorStop(1, 'rgba(236,134,105,0)'); g.fillStyle = sg; g.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+    g.beginPath(); g.arc(cx, hy + (1 - sun) * r * .25, r * .13, Math.PI, 0); g.fillStyle = P.terra; g.fill();
+    if (o.house) { g.beginPath(); g.moveTo(cx - r * .5, hy); g.lineTo(cx - r * .5, hy - r * .22); g.lineTo(cx - r * .28, hy - r * .42); g.lineTo(cx - r * .06, hy - r * .22); g.lineTo(cx - r * .06, hy); g.fillStyle = '#1b1715'; g.fill(); }
+    g.beginPath(); g.ellipse(cx, hy + r * 1.2, r * 1.6, r * 1.2, 0, 0, 7); g.fillStyle = '#141211'; g.fill();
+    g.strokeStyle = 'rgba(210,190,170,.14)'; g.lineWidth = 1.4; for (let i = 1; i < 6; i++) { g.beginPath(); g.ellipse(cx, hy + r * 1.2 + i * r * .09, r * 1.6, r * 1.2, 0, Math.PI * 1.25, Math.PI * 1.75); g.stroke(); } }
+  g.restore();
+  g.beginPath(); g.arc(cx, cy, r, 0, 7); g.strokeStyle = `rgba(235,228,218,${.55 + .3 * (1 - fill)})`; g.lineWidth = 2.4; g.stroke(); g.restore(); }
+function dotted(g, pts, p, a = 1) { if (p <= 0) return; g.save(); g.globalAlpha *= a; stroke(g, pts, 'rgba(210,205,195,.6)', 2.6, p, [1, 9]); const q = partial(pts, p); if (p >= .98) { const e = q[q.length - 1], b = q[q.length - 4] || q[0], an = Math.atan2(e[1] - b[1], e[0] - b[0]);
+  stroke(g, [[e[0] - Math.cos(an - .5) * 14, e[1] - Math.sin(an - .5) * 14], e, [e[0] - Math.cos(an + .5) * 14, e[1] - Math.sin(an + .5) * 14]], 'rgba(210,205,195,.6)', 2.4); } g.restore(); }
+
+// ---------- Bildschirminhalte ----------
+function oldSite(g, w, h, t, o = {}) { g.fillStyle = '#bdbab3'; g.fillRect(0, 0, w, h); g.fillStyle = '#9d9a94'; g.fillRect(0, 60, w, 34);
+  fnt(g, 'GA', 15); g.fillStyle = '#3c3a36'; g.fillText('Tischlerei Holm – Startseite', 14, 82);
+  const R = rng(9); g.fillStyle = 'rgba(70,68,64,.55)'; for (let i = 0; i < 34; i++) { const y = 112 + i * 7; if (y > 330 && y < 470) continue; g.fillRect(14, y, (w - 28) * (.55 + R() * .45), 2); }
+  g.strokeStyle = '#8b8883'; g.lineWidth = 2; g.strokeRect(18, 348, w * .42, 110); g.beginPath(); g.moveTo(18, 348); g.lineTo(18 + w * .42, 458); g.moveTo(18 + w * .42, 348); g.lineTo(18, 458); g.stroke();
+  for (let i = 0; i < 9; i++) g.fillRect(w * .5, 352 + i * 11, w * .42 * (.6 + R() * .4), 3);
+  for (let i = 0; i < 8; i++) g.fillRect(14, 490 + i * 9.5, (w - 28) * (.5 + R() * .5), 3);
+  g.fillStyle = '#9d9a94'; g.fillRect(0, h - 80, w, 80); fnt(g, 'GA', 14); g.fillStyle = '#4a4843'; g.fillText('Kontakt: per E-Mail', 14, h - 46); g.fillText('Tel: –', 14, h - 26); }
+function newSite(g, w, h, t) { g.fillStyle = '#121113'; g.fillRect(0, 0, w, h); const gr = g.createRadialGradient(w / 2, 150, 10, w / 2, 150, w); gr.addColorStop(0, 'rgba(60,50,42,.6)'); gr.addColorStop(1, 'rgba(18,17,19,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  const lk = eo(lin(t, K.logoW - .3, K.logoW)); if (lk > 0) { g.save(); g.globalAlpha = lk; g.translate(0, (1 - lk) * 12);
+    g.beginPath(); g.arc(46, 100, 24, 0, 7); g.fillStyle = P.disc; g.fill(); star4(g, 46, 100, 15, P.terra, t * .4); fnt(g, 'GA', 30); g.fillStyle = P.cream; g.fillText('Tischlerei Holm', 82, 110); g.restore(); }
+  const hk = eo(lin(t, K.logoW - .1, K.logoW + .3)); if (hk > 0) { g.save(); g.globalAlpha = hk; fnt(g, 'GA', 44); g.fillStyle = P.cream; g.fillText('Möbel nach Maß', 24, 190); fnt(g, 'GA', 24); g.fillStyle = 'rgba(244,241,234,.6)'; g.fillText('aus eigener Werkstatt', 26, 224); g.restore(); }
+  [[PP.cab, 0], [PP.stair, 1], [PP.table, 2]].forEach(([c, i]) => { const k = eback(lin(t, K.projekte - .45 + i * .1, K.projekte - .1 + i * .1)); if (k <= 0) return; const x = [w * .28, w * .72, w * .5][i], y = [350, 370, 545][i];
+    drawPaper(g, c, x + (1 - k) * 260, y, .6 * Math.min(1, k), [-.06, .05, -.03][i] + idle(t, 1.3, .01, i)); });
+  const bk = lin(t, K.knopf - .3, K.knopf); if (bk > 0) { const s = eback(bk); g.save(); g.translate(w / 2, h - 90); g.scale(s, s); rr(g, -w * .4, -34, w * .8, 68, 34); g.fillStyle = P.terra; g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.25)'; g.lineWidth = 1.5; g.stroke(); fnt(g, 'GA', 34); g.fillStyle = '#fff8f2'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('Jetzt anrufen', 16, 2);
+    g.beginPath(); g.arc(-w * .27, 0, 13, 0, 7); g.strokeStyle = '#fff8f2'; g.lineWidth = 2.5; g.stroke(); g.restore(); }
+}
+let PP = {};
+function mkPapers() {
+  PP.face = paperCanvas(330, 300, 'white', 11, (g, w, h) => portrait(g, w / 2, h * .42, .92));
+  PP.face2 = paperCanvas(250, 240, 'white', 12, (g, w, h) => portrait(g, w / 2, h * .42, .7));
+  PP.gold = paperCanvas(330, 270, 'gold', 21, (g, w, h, R) => { treeRings(g, w * .42, h * .52, 88, R); star4(g, w * .8, h * .3, 26, '#2a1d08'); });
+  PP.goldTL = paperCanvas(360, 300, 'gold', 22, (g, w, h, R) => { engrave(g, w * .55, h * .55, 90, R); star4(g, w * .78, h * .48, 22, '#2a1d08'); });
+  PP.order = paperCanvas(300, 330, 'gold', 23, (g, w, h) => { g.save(); g.globalAlpha = .9; cabinet(g, w / 2, h * .48, .8, 0); g.restore(); g.fillStyle = '#2a1d08'; fnt(g, 'GA', 40); g.textAlign = 'center'; g.fillText('Auftrag', w / 2, h - 20); });   // V7: Wort am Objekt
+  PP.work = paperCanvas(460, 500, 'white', 31, (g, w, h) => cabinet(g, w / 2, h * .5, 1.35, 1));
+  PP.cab = paperCanvas(240, 230, 'white', 41, (g, w, h) => cabinet(g, w / 2, h * .5, .6, 1));
+  PP.stair = paperCanvas(240, 230, 'white', 42, (g, w, h) => stairs(g, w / 2, h * .52, .68));
+  PP.table = paperCanvas(260, 200, 'gold', 43, (g, w, h) => table(g, w / 2, h * .5, .66));
+  PP.stripe = paperCanvas(120, 420, 'stripe', 51);
+  const tag = (s, sd, strike) => paperCanvas(tw(s, 'GA', 50) + 60, 92, 'white', sd, (g, w, h) => { fnt(g, 'GA', 50); g.fillStyle = P.ink; g.textAlign = 'center'; g.fillText(s, w / 2, h * .68);
+    if (strike) { const sw = tw(s, 'GA', 50); g.strokeStyle = P.terra; g.lineWidth = 5; g.lineCap = 'round'; g.beginPath(); g.moveTo(w / 2 - sw / 2 - 8, h * .52); g.lineTo(w / 2 + sw / 2 + 8, h * .47); g.stroke(); } });
+  PP.t1 = tag('winzig', 61); PP.t2 = tag('Foto', 62, true); PP.t3 = tag('Nummer', 63, true);   // V7: ein Wort je Etikett, Fehlendes durchgestrichen
+}
+
+// ---------- Szenen ----------
+let DR = [0, 0];
+function cam(g, x, y, s) { g.translate(W / 2, H / 2); g.scale(s, s); g.translate(-W / 2 - x - DR[0], -H / 2 - y - DR[1]); }
+function bgDraw(g) { g.drawImage(BG, -200 + DR[0] * .6, -150 + DR[1] * .6); }
+// 1+2: Kunde sucht, findet die alte Website, drei Mängel
+function s1(g, t) {
+  const z = eio(lin(t, K.winzige - .55, K.winzige - .15)); cam(g, 0, 0, 1); bgDraw(g);
+  const px = mix(1000, 760, z), py = mix(520, 545, z), pw = mix(330, 410, z), ph = mix(680, 845, z);
+  // Kunde (Papier links), Gold (Tischler) rechts
+  const k0 = K.kunde - .61, fk = eo(lin(t, k0, k0 + .3)); drawPaper(g, PP.face, mix(560, 330, z), mix(470, 300, z) + idle(t, 1.1, 5), mix(.9, .62, z) * mix(.9, 1, fk), -.05 + idle(t, .9, .01), fk);
+  dotted(g, curve([mix(700, 440, z), mix(470, 330, z)], [mix(780, 520, z), mix(390, 280, z)], [px - pw / 2 - 12, py - ph * .22]), eo(lin(t, k0 + .25, k0 + .6)), 1 - z);
+  const gk = eo(lin(t, K.tischler - .3, K.tischler)); drawPaper(g, PP.gold, mix(1470, 1800, z), 470 + idle(t, 1.2, 5, 1), .92 * mix(.9, 1, gk), .05 + idle(t, .8, .012, 2), gk * (1 - z));
+  dotted(g, curve([1310, 470], [1240, 400], [px + pw / 2 + 12, py - ph * .1]), eo(lin(t, K.tischler, K.tischler + .3)), gk * (1 - z));
+  phone(g, px, py + idle(t, .9, 3), pw, ph, (s, w, h) => {
+    const ok = lin(t, K.website - .45, K.website - .15);
+    if (ok < 1) { s.fillStyle = '#0d0d0f'; s.fillRect(0, 0, w, h);
+      s.save(); s.globalAlpha = 1 - ok; rr(s, 18, 70, w - 36, 52, 26); s.fillStyle = 'rgba(40,37,34,1)'; s.fill(); s.strokeStyle = 'rgba(255,240,225,.12)'; s.lineWidth = 1.5; s.stroke();
+      const qk = eo(lin(t, K.tischler - .25, K.tischler)); fnt(s, 'GA', 30); s.fillStyle = P.cream; s.globalAlpha *= qk; s.fillText('Tischler', 40, 106); s.globalAlpha = 1 - ok;   // V7: Suchwort als Ganzes, nicht getippt
+      const res = [['Tischlerei Holm', 'tischlerei-holm.de'], ['Tischlerei Nebenan', '★★★★★'], ['Möbel Schmidt', '']];
+      res.forEach(([a, b], i) => { const k = eo(lin(t, K.er - .2 + i * .08, K.er + .1 + i * .08)); if (k <= 0) return; s.save(); s.globalAlpha *= k; s.translate(0, 150 + i * 96 + (1 - k) * 14);
+        rr(s, 18, 0, w - 36, 80, 12); s.fillStyle = i === 0 && t > K.findet - .1 ? 'rgba(217,117,90,.22)' : 'rgba(255,245,230,.05)'; s.fill(); fnt(s, 'GA', 26); s.fillStyle = P.cream; s.fillText(a, 36, 34); fnt(s, 'GA', 20); s.fillStyle = 'rgba(244,241,234,.55)'; s.fillText(b, 36, 62); s.restore(); });
+      if (t > K.findet - .1) rings(s, w / 2, 190, t, K.findet - .1, 2, 30, '236,134,105');
+      s.restore(); }
+    if (ok > 0) { s.save(); s.globalAlpha = ok; oldSite(s, w, h, t); s.restore(); }
+  }, { p: eo(lin(t, k0, k0 + .3)) });
+  // Mängel: Terrakotta-Kreise + Papier-Etiketten
+  const sx = (fx) => px - pw / 2 + 12 + fx * (pw - 24) / 386, sy = (fy) => py - ph / 2 + 12 + fy * (ph - 24) / 821;
+  const marks = [[K.winzige, 190, 180, 150, 60, PP.t1, 1470, 300], [K.foto, 110, 400, 110, 80, PP.t2, 1440, 540], [K.nummer, 60, 770, 90, 40, PP.t3, 1470, 780]];
+  marks.forEach(([t0, fx, fy, rx, ry, tag, tx, ty], i) => { const k = eo(lin(t, t0 - .32, t0)); if (k <= 0) return; const cx = sx(fx), cy = sy(fy), q = pw / 386;
+    g.save(); g.beginPath(); g.ellipse(cx, cy, rx * q * 1.1, ry * q * 1.2, -.05, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2.1 * k); g.strokeStyle = P.terra; g.lineWidth = 4; g.lineCap = 'round'; g.stroke(); g.restore();
+    drawPaper(g, tag, tx + (1 - k) * 60, ty + idle(t, 1.2, 4, i), .95, [-.04, .03, -.02][i], k);
+    dotted(g, curve([tx - tag.width * .45, ty], [mix(tx, cx, .5), ty - 40], [cx + rx * q * 1.15, cy]), eo(lin(t, t0 - .1, t0 + .25)), k); });
+  // V7: Serifen-Sätze „Tischler gesucht.“ / „Er findet Ihre Website.“ entfallen
+}
+// 3: zwei Sekunden – die Scheibe läuft leer, er ist weg
+function s2(g, t) {
+  cam(g, 0, 0, 1 + .03 * lin(t, K.nach - .5, K.und - .3)); bgDraw(g); const cx = 960, cy = 450, r = 175;
+  guide(g, cx, cy, r, eo(lin(t, K.zwei - .6, K.zwei - .2)) * .9);
+  const drain = lin(t, K.zwei, K.weg); // 2 Sekunden, verdichtet
+  g.save(); g.beginPath(); g.arc(cx, cy, r, 0, 7); g.clip(); g.fillStyle = '#d9d5cd'; g.globalAlpha = 1 - drain * .95; g.fillRect(cx - r, cy - r + 2 * r * drain * .98, 2 * r, 2 * r); g.globalAlpha = 1;
+  drawPaper(g, PP.face2, cx + (t > K.weg ? -e2(lin(t, K.weg, K.weg + .5)) * 900 : 0), cy + 30, 1.2, 0, (1 - drain * .7) * (1 - lin(t, K.weg, K.weg + .3))); g.restore();
+  g.beginPath(); g.arc(cx, cy, r, 0, 7); g.strokeStyle = 'rgba(235,228,218,.7)'; g.lineWidth = 2.4; g.stroke();
+  // Sekundenring: 2 s laufen ab
+  const arcP = 1 - drain; g.save(); g.beginPath(); g.arc(cx, cy, r + 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * arcP); g.strokeStyle = P.terra; g.lineWidth = 5; g.lineCap = 'round'; g.globalAlpha = eo(lin(t, K.zwei - .4, K.zwei - .1)); g.stroke(); g.restore();
+  for (let i = 0; i < 20; i++) { const an = -Math.PI / 2 + i / 20 * Math.PI * 2; g.strokeStyle = 'rgba(230,225,215,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx + Math.cos(an) * (r + 42), cy + Math.sin(an) * (r + 42)); g.lineTo(cx + Math.cos(an) * (r + (i % 5 ? 50 : 58)), cy + Math.sin(an) * (r + (i % 5 ? 50 : 58))); g.stroke(); }
+  rings(g, cx, cy, t, K.weg, 3, r);
+  // V7: Sekundenzähler am Objekt (Zahl mit Einheit), endet Terrakotta auf „weg“; Serifen-Sätze entfallen
+  const secs = Math.max(0, 2 - drain * 2); words(g, [[secs.toFixed(1).replace('.', ',') + ' s', K.zwei]], cx, cy + r + 150, { size: 72, t, col: drain >= 1 ? P.terra : 'rgba(244,241,234,.8)' });
+}
+// 4: Der Auftrag wandert zum Betrieb nebenan
+function s3(g, t) {
+  cam(g, 0, 0, 1); bgDraw(g); const L = [600, 540], Rr = [1320, 540];
+  phone(g, L[0], L[1] + idle(t, .9, 3), 300, 610, (s, w, h) => { oldSite(s, w, h, t); s.fillStyle = 'rgba(0,0,0,.45)'; s.fillRect(0, 0, w, h); }, { a: eo(lin(t, K.und - .4, K.und - .1)) });
+  const lit = eo(lin(t, K.betrieb - .4, K.betrieb));
+  phone(g, Rr[0], Rr[1] + idle(t, .9, 3, 1), 300, 610, (s, w, h) => { s.fillStyle = '#16140f'; s.fillRect(0, 0, w, h); const gr = s.createRadialGradient(w / 2, 180, 5, w / 2, 180, w * .9); gr.addColorStop(0, `rgba(180,136,55,${.35 * lit})`); gr.addColorStop(1, 'rgba(0,0,0,0)'); s.fillStyle = gr; s.fillRect(0, 0, w, h);
+    s.globalAlpha = .3 + .7 * lit; fnt(s, 'GA', 30); s.fillStyle = P.cream; s.fillText('Tischlerei Nebenan', 22, 110); fnt(s, 'GA', 20); s.fillStyle = 'rgba(244,241,234,.6)'; s.fillText('Küchen nach Maß · Anruf', 22, 140);
+    s.fillStyle = 'rgba(244,241,234,.08)'; s.fillRect(22, 170, w - 44, 200); rr(s, 22, h - 110, w - 44, 60, 30); s.fillStyle = 'rgba(244,241,234,.9)'; s.fill(); fnt(s, 'GA', 26); s.fillStyle = '#1a1714'; s.textAlign = 'center'; s.fillText('Anrufen', w / 2, h - 72); s.globalAlpha = 1; },
+    { a: .4 + .6 * lit });
+  if (lit > 0) { g.save(); g.globalCompositeOperation = 'lighter'; const gr = g.createRadialGradient(Rr[0], Rr[1], 50, Rr[0], Rr[1], 480); gr.addColorStop(0, `rgba(120,85,40,${.25 * lit})`); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(Rr[0] - 500, Rr[1] - 500, 1000, 1000); g.restore(); }
+  const arc = curve([L[0] + 40, 300], [960, 60], [Rr[0], 560]);
+  dotted(g, arc, eo(lin(t, K.geht - .3, K.geht + .2)));
+  const ok = eo(lin(t, K.auftrag - .3, K.auftrag)), mv = eio(lin(t, K.geht, K.nebenan)), q = arc[Math.round(mv * (arc.length - 1))];
+  drawPaper(g, PP.order, q[0], q[1] + (1 - ok) * 30 + idle(t, 1.6, 4), .78 - Math.sin(mv * Math.PI) * .05, -.06 + mv * .12 + idle(t, 1.1, .02), ok);
+  rings(g, Rr[0], 560, t, K.nebenan, 3, 130);
+  // V7: Zeilen „Ihr Auftrag“ / „Betrieb nebenan“ entfallen – Wort „Auftrag“ steht auf dem Goldpapier
+}
+// 5: Ihre Arbeit ist besser
+function s4(g, t) {
+  cam(g, 0, 0, 1 + .025 * lin(t, K.dabei - .5, K.werkseite - .8)); bgDraw(g);
+  const k = eo(lin(t, K.dabei - .4, K.dabei)); guide(g, 960, 480, 200, k * .7);   // V7: mittig, weil die Satzzeile entfällt
+  drawPaper(g, PP.work, 960, 490 + (1 - k) * 30 + idle(t, 1, 5), .95, -.03 + idle(t, .8, .01), k);
+  drawPaper(g, PP.goldTL, 580, 250 + idle(t, 1.2, 5, 1), .7, -.12, eo(lin(t, K.dabei - .3, K.dabei + .1)) * .95);
+  const sk = lin(t, K.besser - .2, K.besser); if (sk > 0) { const s = eback(sk); g.save(); g.translate(1210, 290); g.scale(s, s); g.beginPath(); g.arc(0, 0, 62, 0, 7); g.fillStyle = '#1d1a18'; g.fill(); g.strokeStyle = '#f1ece4'; g.lineWidth = 9; g.stroke(); star4(g, 0, 0, 40, P.terra, .3 + idle(t, 2, .05)); g.restore(); rings(g, 1210, 290, t, K.besser, 2, 70); }
+  // V7: Satz „Ihre Arbeit ist besser.“ entfällt – die Stern-Plakette trägt es
+}
+// 6: Werkseite – die Marke entsteht aus einem Punkt; baut die neue Website in 14 Tagen
+function s5(g, t) {
+  cam(g, 0, 0, 1); bgDraw(g);
+  const mv = eio(lin(t, K.baut + .15, K.website2 - .2)), cx = mix(960, 600, mv), cy = mix(420, 440, mv), r = mix(170, 150, mv);
+  guide(g, cx, cy, r, eo(lin(t, K.werkseite - .75, K.werkseite - .35)));
+  const dot = lin(t, K.werkseite - .6, K.werkseite - .3), grow = lin(t, K.werkseite - .3, K.werkseite);
+  if (dot > 0 && grow <= 0) { const q = curve([cx - 380, cy + 220], [cx - 200, cy - 200], [cx, cy], 30)[Math.round(eio(dot) * 30)]; g.beginPath(); g.arc(q[0], q[1], 9, 0, 7); g.fillStyle = P.terra; g.fill(); }
+  if (grow > 0) disc(g, cx, cy, r * eback(grow), { fill: clamp(grow * 1.5), sun: eo(lin(t, K.werkseite - .1, K.werkseite + .4)), house: true });
+  rings(g, cx, cy, t, K.werkseite, 3, r);
+  drawPaper(g, PP.goldTL, 110, 110 + idle(t, 1, 4), .8, -.25, eo(lin(t, K.werkseite - .7, K.werkseite - .3)));
+  words(g, [['Werkseite', K.werkseite]], cx, cy + r + 130, { size: 100, t, glow: true });
+  // V7: Unterzeile „baut Ihre neue“ entfällt
+  // neue Website: Drahtrahmen zeichnet sich
+  const wp = lin(t, K.baut + .1, K.website2);
+  if (wp > 0) phone(g, 1300, 530 + idle(t, .9, 3), 330, 680, (s, w, h) => { const k = lin(t, K.website2 - .3, K.website2); s.strokeStyle = `rgba(230,225,215,${.35 * k})`; s.lineWidth = 2; s.setLineDash([6, 6]);
+      s.strokeRect(22, 90, w - 44, 70); s.strokeRect(22, 180, w - 44, 200); s.strokeRect(22, 400, (w - 58) / 2, 150); s.strokeRect(36 + (w - 58) / 2, 400, (w - 58) / 2, 150); s.setLineDash([]); rr(s, 40, h - 110, w - 80, 56, 28); s.stroke();
+      const dk = lin(t, K.vierzehn, K.tagen + .3); s.fillStyle = `rgba(217,117,90,${.25 * dk})`; s.fillRect(22, 180, (w - 44) * dk, 200); }, { p: eo(wp) });
+  // 14 Tage: 14 Marken füllen sich
+  const tk = eo(lin(t, K.vierzehn - .35, K.vierzehn)); if (tk > 0) { words(g, [['14', K.vierzehn, P.terra], ['Tage', K.vierzehn]], 1300, 990, { size: 72, t });   // V7: Zahl mit Einheit als Ganzes
+    for (let i = 0; i < 14; i++) { const x = 1300 - 6.5 * 30 + i * 30, on = t > K.vierzehn + i * .06; g.beginPath(); g.arc(x, 1030, 7, 0, 7); g.fillStyle = on ? P.terra : 'rgba(244,241,234,.18)'; g.globalAlpha = tk; g.fill(); g.globalAlpha = 1; } }
+}
+// 7: Logo, echte Projekte, Knopf zum Anrufen
+function s6(g, t) {
+  cam(g, 0, 0, 1); bgDraw(g); const px = 960, py = 520;
+  phone(g, px, py + idle(t, .9, 3), 400, 820, (s, w, h) => newSite(s, w, h, t));
+  const lab = [['Logo', K.logoW, 520, 330, px - 190, 305], ['Projekte', K.projekte, 1440, 420, px + 190, 450], ['Anrufen', K.knopf, 520, 800, px - 170, 850]];   // V7: ein Wort je Pille
+  lab.forEach(([s, t0, x, y, ex, ey], i) => { pill(g, x, y + idle(t, 1.2, 4, i), s, 44, t0, { t }); dotted(g, curve([x + (x < px ? 1 : -1) * (tw(s, 'GA', 44) / 2 + 30), y], [mix(x, ex, .5), y - 60], [ex, ey]), eo(lin(t, t0 - .1, t0 + .25))); });
+  if (t > K.anrufen) { rings(g, px, py + 350, t, K.anrufen - .05, 3, 60, '236,134,105'); }
+}
+// 8: Es klingelt – jede Woche neue Anfragen
+function s7(g, t) {
+  cam(g, 0, 0, 1); bgDraw(g); const px = mix(960, 1180, eio(lin(t, K.jede - .6, K.jede - .15))), py = 520, ring = t > K.klingelt - .1 && t < K.woche - .2;
+  const sh = ring ? Math.sin(t * 60) * 4 * (Math.sin((t - K.klingelt) * Math.PI / .45) > 0 ? 1 : .2) : 0;
+  phone(g, px + sh, py + idle(t, .9, 3), 400, 820, (s, w, h) => { s.fillStyle = '#121113'; s.fillRect(0, 0, w, h);
+    const gr = s.createRadialGradient(w / 2, 260, 10, w / 2, 260, w); gr.addColorStop(0, 'rgba(90,60,40,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); s.fillStyle = gr; s.fillRect(0, 0, w, h);
+    fnt(s, 'GA', 26); s.fillStyle = 'rgba(244,241,234,.6)'; s.textAlign = 'center'; s.fillText('Anruf', w / 2, 120); fnt(s, 'GA', 44); s.fillStyle = P.cream; s.fillText('Neuer Kunde', w / 2, 170);
+    s.save(); s.beginPath(); s.arc(w / 2, 330, 105, 0, 7); s.clip(); s.drawImage(PP.face2, w / 2 - 150, 330 - 125, 300, 290); s.restore(); s.beginPath(); s.arc(w / 2, 330, 105, 0, 7); s.strokeStyle = 'rgba(244,241,234,.6)'; s.lineWidth = 2; s.stroke();
+    const pk = .5 + .5 * Math.sin(t * 9); rr(s, w / 2 - 60, h - 150, 120, 120, 60); s.fillStyle = P.terra; s.fill(); s.strokeStyle = `rgba(255,255,255,${.2 + .3 * pk})`; s.lineWidth = 3; s.stroke();
+    fnt(s, 'GA', 28); s.fillStyle = '#fff8f2'; s.fillText('annehmen', w / 2, h - 170); });
+  for (let k = 0; k < 4; k++) rings(g, px, py - 120, t, K.klingelt - .1 + k * .45, 2, 230, '236,134,105');
+  // V7: Zeilen „Jetzt klingelt Ihr Telefon.“ entfallen
+  const nots = ['Einbauschrank', 'Treppe', 'Esstisch'], days = ['Mo', 'Mi', 'Fr'], nt = [K.jede, K.neue2, K.anfragen]; nots.forEach((s, i) => { const t0 = nt[i], k = eo(lin(t, t0 - .3, t0)); if (k <= 0) return;
+    g.save(); g.globalAlpha = k; g.translate(520, 640 + i * 108 + (1 - k) * 20); rr(g, -300, -44, 600, 88, 18); g.fillStyle = 'rgba(34,31,28,.92)'; g.fill(); g.strokeStyle = 'rgba(255,245,230,.10)'; g.lineWidth = 1.5; g.stroke();
+    g.beginPath(); g.arc(-252, 0, 10, 0, 7); g.fillStyle = P.terra; g.fill(); fnt(g, 'GA', 26); g.fillStyle = 'rgba(244,241,234,.6)'; g.fillText('Anfrage', -222, -6); fnt(g, 'GA', 36); g.fillStyle = P.cream; g.fillText(s, -222, 30);
+    fnt(g, 'GA', 40); g.fillStyle = P.terra; g.textAlign = 'right'; g.fillText(days[i], 270, 14); g.restore(); });   // V7: Wochentag statt „jede Woche“
+  // V7: Zeile „jede Woche“ entfällt
+}
+// 9: Marke
+function s8(g, t) {
+  cam(g, 0, 0, 1 + .03 * eio(lin(t, K.marke - .75, DUR))); bgDraw(g);
+  drawPaper(g, PP.goldTL, 130, 120 + idle(t, 1, 4), .9, -.25, eo(lin(t, K.marke - .6, K.marke - .2)));
+  drawPaper(g, PP.stripe, 1880, 560 + idle(t, 1.1, 4, 1), 1, .12, eo(lin(t, K.marke - .5, K.marke - .1)));
+  const cx = 960, cy = 350, r = 150; guide(g, cx, cy, r, eo(lin(t, K.marke - .7, K.marke - .3)));
+  const grow = lin(t, K.marke - .35, K.marke - .05); if (lin(t, K.marke - .65, K.marke - .35) > 0 && grow <= 0) { g.beginPath(); g.arc(cx, cy, 9, 0, 7); g.fillStyle = P.terra; g.fill(); }
+  if (grow > 0) disc(g, cx, cy, r * eback(grow), { fill: clamp(grow * 1.5), sun: eo(lin(t, K.marke - .1, K.marke + .5)) + .04 * Math.sin(t * 2), house: true });
+  rings(g, cx, cy, t, K.marke, 3, r); rings(g, cx, cy, t, K.festpreis, 2, r);
+  words(g, [['Werkseite', K.marke]], cx, 655, { size: 120, t, glow: true });
+  words(g, [['Handwerker-Websites', K.handwerker]], cx, 740, { size: 56, t, font: 'GA', col: 'rgba(244,241,234,.78)' });   // V7: ein Wort statt Satzstück
+  pill(g, cx, 840, 'Festpreis', 46, K.festpreis, { t, bg: P.terra, col: '#fff8f2', stroke: 'rgba(255,255,255,.2)', r: 32 });
+  words(g, [['werkseite.de  ·  040 318 77 20', K.websites]], cx, 965, { size: 40, t, col: 'rgba(244,241,234,.7)' });
+}
+const SC = [s1, s2, s3, s4, s5, s6, s7, s8];
+const TR = [[K.nach - .5, .35], [K.und - .3, .32], [K.dabei - .5, .35], [K.besser + .35, .3], [K.logo - .6, .35], [K.jetzt - .5, .35], [K.marke - .75, .35]];
+const DRV = [[-10, -3], [9, 3], [-9, 2], [10, -3], [-8, -3], [9, 2], [-9, 3], [6, -2]], T0 = [0, ...TR.map(q => q[0])];
+const BUF = mk(W, H), BX = BUF.getContext('2d');
+function drawSc(g, i, t) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; const u = t - T0[i] - 2; DR = [DRV[i][0] * u, DRV[i][1] * u]; SC[i](g, t); g.restore(); }
+function frame(t) { const g = X; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1;
+  let i = 0; while (i < TR.length && t >= TR[i][0] + TR[i][1]) i++;
+  drawSc(g, i, t);
+  if (i < TR.length && t > TR[i][0]) { const k = eio(lin(t, TR[i][0], TR[i][0] + TR[i][1])); BX.clearRect(0, 0, W, H); drawSc(BX, i + 1, t); g.save(); g.globalAlpha = k; g.drawImage(BUF, 0, 0); g.restore(); }
+  const f = Math.max(1 - lin(t, 0, .15), lin(t, DUR - .5, DUR)); if (f > 0) { g.fillStyle = `rgba(0,0,0,${f})`; g.fillRect(0, 0, W, H); } }
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => {
+  await Promise.all([document.fonts.load('80px GA')]); BG = mkBg(); mkPapers(); frame(0); return true; })(), seek(t) { frame(t); } };
+</script>
+</body></html>

@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Achird)
+const K = {"schon": 0.34, "strom": 1.4, "steigt": 1.85, "jedes": 2.66, "jahr": 3.07, "hunderte": 3.68, "mehr": 4.24, "dabei": 5.18, "sonne": 5.83, "jeden": 6.28, "tag": 6.57, "dach": 7.02, "sonnenhof": 7.9, "kraftwerk": 9.99, "planung": 10.9, "montage": 11.64, "anmeldung": 12.2, "alles": 12.97, "hand": 13.55, "tags": 14.32, "haus": 15.36, "sonnenstrom": 15.67, "speicher": 16.87, "abend": 18.2, "ihre2": 18.88, "rechnung": 19.12, "sinkt": 19.56, "siebzig": 20.38, "prozent": 20.82, "sonnenhof2": 21.64, "check": 23.44, "kostenlos": 24.02, "cut": {"sea": 5.08, "sun": 6.1, "house": 10.3, "drop2": 18.52, "brand": 21.53}};
+const DUR = 26.09;

@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Recht am Steuer – V7</title>
+<style>
+@font-face{font-family:'DC';src:local('DIN Condensed Bold'),local('DINCondensed-Bold'),url(Inter.ttf);font-weight:700}
+@font-face{font-family:'DA';src:local('DIN Alternate Bold'),local('DINAlternate-Bold'),url(Inter.ttf);font-weight:700}
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// V7: K = gemessene Wortanfänge (unverändert). Für Kamerafahrten/Szenenwechsel gilt KV = K − 0,22 s (Bild steht vor dem Wort);
+// Schlagworte und Hervorhebungen rechnen direkt mit K und sind auf dem Wort fertig.
+// V7-Text: nur noch ein Schlagwort pro Halbsatz (exakt die gesprochenen Wörter, als Ganzes, per Maske von unten wie im Vox-Reel).
+// Kleine Satzzeilen („Geblitzt in der Tempo-50-Zone“, „Das heißt nicht nur:“, „Das heißt:“, „Aber:“, „Und oft heißt es am Ende:“) entfernt.
+const KV = {}; for (const k in K) KV[k] = +(K[k] - 0.22).toFixed(3);
+// Recht am Steuer – Kundengeschichte in 16:9. Prinzipien aus dem Football-IQ-Reel, nicht dessen Look:
+// Wort und Bild landen gleichzeitig · Objekte verwandeln sich statt harter Schnitte ·
+// Rausfahren = was auf dem Spiel steht · Hineinzoomen = genauer hinsehen · Lichtbalken = Fokus · Split = ein Ganzes in seine Teile.
+const W = 1920, H = 1080;
+const C = { bg0: '#F4F8FD', bg1: '#CFDAEA', ink: '#0E1A30', ink2: '#4A5874', blue: '#1F5FD6', navy: '#15378A', navy2: '#0A1945', yel: '#FFC526', red: '#E5392B', green: '#1FA35C', white: '#FFFFFF' };
+
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - x, 3), e4 = x => 1 - Math.pow(1 - x, 4), eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const back = x => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const slam = x => x <= 0 ? 0 : x >= 1 ? 1 : 1 - Math.pow(1 - x, 5); // Stempel
+function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function rr(g, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function sh(g, b, oy, a = .28, col = '10,25,60') { g.shadowColor = `rgba(${col},${a})`; g.shadowBlur = b; g.shadowOffsetY = oy; g.shadowOffsetX = 0; }
+function nosh(g) { g.shadowColor = 'transparent'; g.shadowBlur = 0; g.shadowOffsetY = 0; }
+function txt(g, s, x, y, font, col, align = 'left', ls = 0) { g.font = font; g.fillStyle = col; g.textAlign = align; g.letterSpacing = ls + 'px'; g.fillText(s, x, y); g.letterSpacing = '0px'; }
+let GRAIN;
+function grain() { const out = []; for (let k = 0; k < 5; k++) { const w = 960, h = 540, c = mk(w, h), g = c.getContext('2d'), im = g.createImageData(w, h), d = im.data, R = rng(40 + k);
+  for (let i = 0; i < w * h; i++) { const v = 128 + (R() + R() - 1) * 60; d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255; } g.putImageData(im, 0, 0); out.push(c); } return out; }
+
+// ---------- Hintergründe ----------
+function bgLight(g, a = 1) { if (a <= 0) return; g.save(); g.globalAlpha = a; const gr = g.createRadialGradient(W / 2, H * .42, 80, W / 2, H / 2, 1250); gr.addColorStop(0, C.bg0); gr.addColorStop(.6, '#E3EAF4'); gr.addColorStop(1, C.bg1); g.fillStyle = gr; g.fillRect(0, 0, W, H); g.restore(); }
+let MAPBG;
+function makeMapBg() { // Stadtplan bei Nacht: Blöcke, Nebenstraßen, Park, Fluss
+  const w = 3200, h = 2000, c = mk(w, h), g = c.getContext('2d'), R = rng(7);
+  const gr = g.createRadialGradient(w / 2, h / 2, 100, w / 2, h / 2, 1800); gr.addColorStop(0, '#1C46A8'); gr.addColorStop(1, '#0B1B4C'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(40,160,110,.28)'; g.beginPath(); g.ellipse(700, 1400, 260, 170, .3, 0, 7); g.fill(); g.beginPath(); g.ellipse(2500, 520, 210, 150, -.4, 0, 7); g.fill();
+  g.strokeStyle = 'rgba(70,150,255,.35)'; g.lineWidth = 60; g.beginPath(); g.moveTo(-50, 380); g.bezierCurveTo(900, 250, 1300, 900, 2000, 820); g.bezierCurveTo(2600, 760, 2900, 1300, 3300, 1250); g.stroke();
+  for (let y = 0; y < h; y += 120) for (let x = 0; x < w; x += 150) { if (R() < .25) continue; g.fillStyle = `rgba(255,255,255,${.035 + R() * .04})`; rr(g, x + 14, y + 14, 150 - 28 - R() * 30, 120 - 28 - R() * 20, 6); g.fill(); }
+  g.strokeStyle = 'rgba(160,190,255,.16)'; g.lineWidth = 5; for (let y = 0; y < h; y += 120) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } for (let x = 0; x < w; x += 150) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+  return c;
+}
+function vign(g, a = .5, col = '8,20,55') { const v = g.createRadialGradient(W / 2, H / 2, 380, W / 2, H / 2, 1150); v.addColorStop(0, `rgba(${col},0)`); v.addColorStop(1, `rgba(${col},${a})`); g.fillStyle = v; g.fillRect(0, 0, W, H); }
+
+// ---------- Schlagwort (Wort landet mit dem Bild) ----------
+function kw(g, s, x, y, size, col, t, tw, tOut = null, opt = {}) {   // tw = Wortanfang: Schlagwort steht dann vollständig
+  const t0 = tw - .3;
+  if (t < t0 - .01 || (tOut !== null && t > tOut + .35)) return;
+  const p = e4(lin(t, t0, tw)), o = tOut === null ? 0 : eio(lin(t, tOut, tOut + .35));
+  g.save(); g.font = `${size}px DC`; g.textAlign = opt.align || 'left'; const wdt = g.measureText(s).width; const x0 = g.textAlign === 'center' ? x - wdt / 2 : g.textAlign === 'right' ? x - wdt : x;
+  g.globalAlpha = 1 - o;
+  if (opt.bar) { const bk = eo(lin(t, t0 - .06, tw - .04)); g.fillStyle = opt.bar; g.fillRect(x0 - 16, y - size * .78, (wdt + 32) * bk, size * .92); }
+  g.beginPath(); g.rect(x0 - 40, y - size * .9, wdt + 80, size * 1.05); g.clip();
+  g.fillStyle = col; g.fillText(s, x, y + (1 - p) * size * .95 - o * 20);
+  // Durchstreichen (Bildmittel für „kein …“): roter Strich, fertig auf dem Wort
+  if (opt.strike) { const sk = eo(lin(t, tw - .16, tw)); if (sk > 0) { g.strokeStyle = opt.strike; g.lineWidth = size * .11; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0 - 18, y - size * .3 + 6); g.lineTo(x0 - 18 + (wdt + 36) * sk, y - size * .3 - 6); g.stroke(); } }
+  g.restore();
+}
+function small(g, s, x, y, size, col, t, t0, tOut = null, align = 'left') {
+  if (t < t0 || (tOut !== null && t > tOut + .3)) return; const p = eo(lin(t, t0, t0 + .3)), o = tOut === null ? 0 : lin(t, tOut, tOut + .3);
+  g.save(); g.globalAlpha = p * (1 - o); txt(g, s, x, y + (1 - p) * 12, `${size}px DA`, col, align, 1); g.restore();
+}
+
+// ---------- Objekte ----------
+function envelope(g, x, y, rot, open) {
+  g.save(); g.translate(x, y); g.rotate(rot); const w = 640, h = 400;
+  sh(g, 40, 22); rr(g, -w / 2, -h / 2, w, h, 14); const gr = g.createLinearGradient(0, -h / 2, 0, h / 2); gr.addColorStop(0, '#FFFFFF'); gr.addColorStop(1, '#E6ECF5'); g.fillStyle = gr; g.fill(); nosh(g);
+  // Rückseite innen (wenn offen)
+  if (open > 0) { g.fillStyle = '#C9D5E6'; g.beginPath(); g.moveTo(-w / 2 + 6, -h / 2 + 6); g.lineTo(w / 2 - 6, -h / 2 + 6); g.lineTo(0, 30); g.closePath(); g.fill(); }
+  // Absender + Fenster
+  g.fillStyle = C.red; rr(g, -w / 2 + 34, -h / 2 + 34, 200, 38, 6); g.fill(); txt(g, 'BUSSGELDSTELLE', -w / 2 + 48, -h / 2 + 62, '24px DA', '#fff', 'left', 1.5);
+  g.fillStyle = '#EEF3FA'; rr(g, -w / 2 + 34, -10, 330, 150, 10); g.fill(); g.strokeStyle = '#B9C7DC'; g.lineWidth = 2; g.stroke();
+  txt(g, 'Amtliches Schreiben', -w / 2 + 54, 30, '26px DA', C.ink); g.fillStyle = '#9FB0C8'; for (let i = 0; i < 3; i++) g.fillRect(-w / 2 + 54, 56 + i * 24, 220 - i * 40, 9);
+  // Briefmarke / Zustellvermerk
+  g.save(); g.translate(w / 2 - 110, -h / 2 + 80); g.rotate(-.12); g.strokeStyle = C.blue; g.lineWidth = 4; rr(g, -70, -44, 140, 88, 8); g.stroke(); txt(g, 'ZUGESTELLT', 0, 8, '24px DC', C.blue, 'center', 1); g.restore();
+  // Klappe
+  g.save(); const fy = -h / 2; g.translate(0, fy); g.scale(1, mix(1, -1, eio(open))); g.beginPath(); g.moveTo(-w / 2 + 2, 0); g.lineTo(w / 2 - 2, 0); g.lineTo(0, h * .52); g.closePath();
+  g.fillStyle = open > .5 ? '#D7E1EF' : '#F3F6FB'; g.fill(); g.strokeStyle = 'rgba(30,60,120,.12)'; g.lineWidth = 2; g.stroke(); g.restore();
+  g.restore();
+}
+const ROWS = [['Tatzeit', '14.03.2025 · 07:42'], ['gemessen', '71 km/h', 1], ['zulässig', '50 km/h'], ['Messgerät', 'Anlage 3'], ['Eichung bis', '31.12.2024'], ['Rechtsfolge', '1 Monat Fahrverbot', 1]];
+function doc(g, x, y, s, rot, st = {}) { // Bescheid
+  g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s); const w = 560, h = 720;
+  sh(g, 50, 26, .3); rr(g, -w / 2, -h / 2, w, h, 10); g.fillStyle = '#FFFFFF'; g.fill(); nosh(g);
+  g.save(); rr(g, -w / 2, -h / 2, w, h, 10); g.clip(); g.fillStyle = C.blue; g.fillRect(-w / 2, -h / 2, w, 84); g.restore();
+  txt(g, 'Bußgeldstelle · Landkreis', -w / 2 + 36, -h / 2 + 52, '24px DA', '#fff', 'left', .5);
+  txt(g, 'Bußgeldbescheid', -w / 2 + 36, -h / 2 + 146, '46px DC', C.ink);
+  ROWS.forEach(([a, b, red], i) => { const yy = -h / 2 + 222 + i * 78;
+    const hl = st.hl && st.hl[i]; if (hl && hl.a > 0) { g.save(); g.fillStyle = hl.col; g.globalAlpha *= hl.a; rr(g, -w / 2 + 22, yy - 44, w - 44, 64, 8); g.fill(); g.restore(); }
+    txt(g, a, -w / 2 + 36, yy, '25px DA', C.ink2); txt(g, b, -w / 2 + 236, yy, red ? '34px DC' : '30px DC', red ? C.red : C.ink);
+    g.fillStyle = 'rgba(14,26,48,.1)'; g.fillRect(-w / 2 + 36, yy + 20, w - 72, 2);
+    if (st.check && st.check[i] > 0) { const k = st.check[i]; g.save(); g.translate(w / 2 - 58, yy - 12); g.strokeStyle = st.checkCol && st.checkCol[i] || C.green; g.lineWidth = 7; g.lineCap = 'round'; g.lineJoin = 'round';
+      g.beginPath(); if (st.checkCol && st.checkCol[i] === C.red) { g.moveTo(-12, -12); g.lineTo(-12 + 24 * clamp(k * 2), -12 + 24 * clamp(k * 2)); if (k > .5) { g.moveTo(12, -12); g.lineTo(12 - 24 * clamp(k * 2 - 1), -12 + 24 * clamp(k * 2 - 1)); } }
+      else { g.moveTo(-14, 0); g.lineTo(-14 + 10 * clamp(k * 2), 10 * clamp(k * 2)); if (k > .5) g.lineTo(-4 + 22 * clamp(k * 2 - 1), 10 - 24 * clamp(k * 2 - 1)); } g.stroke(); g.restore(); } });
+  g.restore();
+}
+function license(g, x, y, s, rot, morph = 0) { // Führerschein; morph -> rundes Schild
+  g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s); const w = mix(430, 360, morph), h = mix(272, 360, morph), r = mix(20, 180, morph);
+  sh(g, 34, 18, .3); rr(g, -w / 2, -h / 2, w, h, r); const gr = g.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2); gr.addColorStop(0, '#FFE1E6'); gr.addColorStop(.5, '#F7C9D2'); gr.addColorStop(1, '#EDB6C2');
+  g.fillStyle = morph > 0 ? `rgba(255,255,255,${morph})` : gr; if (morph < 1) { g.fillStyle = gr; g.fill(); g.fillStyle = `rgba(255,255,255,${morph})`; } g.fill(); nosh(g);
+  const a = 1 - clamp(morph * 2.5); if (a > 0) { g.save(); g.globalAlpha *= a;
+    g.fillStyle = C.blue; rr(g, -w / 2 + 18, -h / 2 + 18, 58, 44, 5); g.fill(); txt(g, 'D', -w / 2 + 47, -h / 2 + 50, '26px DC', C.yel, 'center');
+    txt(g, 'FÜHRERSCHEIN', -w / 2 + 92, -h / 2 + 50, '34px DC', '#7B2230', 'left', 1);
+    g.fillStyle = '#C4CCD8'; rr(g, -w / 2 + 22, -h / 2 + 80, 110, 140, 6); g.fill();
+    g.fillStyle = '#5B6780'; g.beginPath(); g.arc(-w / 2 + 77, -h / 2 + 130, 26, 0, 7); g.fill(); g.beginPath(); g.ellipse(-w / 2 + 77, -h / 2 + 206, 44, 36, 0, Math.PI, 0); g.fill();
+    g.fillStyle = 'rgba(123,34,48,.45)'; for (let i = 0; i < 5; i++) g.fillRect(-w / 2 + 156, -h / 2 + 96 + i * 26, 200 - i * 22, 10);
+    g.restore(); }
+  g.restore();
+}
+function stamp(g, x, y, s, rot, lines, col, k, alpha = 1) { if (k <= 0 || alpha <= 0) return; const sc = mix(2.2, 1, slam(k));
+  g.save(); g.translate(x, y); g.rotate(rot); g.scale(s * sc, s * sc); g.globalAlpha = clamp(k * 3) * alpha * .93;
+  const w = 380, h = lines.length > 1 ? 150 : 110; g.strokeStyle = col; g.lineWidth = 9; rr(g, -w / 2, -h / 2, w, h, 12); g.stroke(); g.lineWidth = 3; rr(g, -w / 2 + 12, -h / 2 + 12, w - 24, h - 24, 8); g.stroke();
+  lines.forEach((l, i) => txt(g, l, 0, (lines.length > 1 ? -8 + i * 52 : 22), lines.length > 1 && i ? '38px DC' : '64px DC', col, 'center', 3));
+  g.restore(); }
+function signCar(g, x, y, r, ring, car, fill = 1) { // Zeichen 260-artig: roter Ring, Auto
+  g.save(); g.translate(x, y); sh(g, 34, 18, .3); g.beginPath(); g.arc(0, 0, r, 0, 7); g.fillStyle = `rgba(255,255,255,${fill})`; g.fill(); nosh(g);
+  if (ring > 0) { g.strokeStyle = C.red; g.lineWidth = r * .2; g.lineCap = 'butt'; g.beginPath(); g.arc(0, 0, r * .9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * eio(ring)); g.stroke(); }
+  if (car > 0) { g.globalAlpha = car; g.scale(r / 180 * mix(.8, 1, eo(car)), r / 180 * mix(.8, 1, eo(car))); g.fillStyle = C.ink;
+    g.beginPath(); g.moveTo(-86, 30); g.lineTo(-80, -6); g.lineTo(-52, -54); g.lineTo(52, -54); g.lineTo(80, -6); g.lineTo(86, 30); g.closePath(); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.moveTo(-46, -8); g.lineTo(-30, -40); g.lineTo(30, -40); g.lineTo(46, -8); g.closePath(); g.fill();
+    g.fillStyle = C.ink; rr(g, -96, 20, 192, 44, 10); g.fill(); rr(g, -84, 56, 36, 30, 6); g.fill(); rr(g, 48, 56, 36, 30, 6); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(-58, 40, 11, 0, 7); g.arc(58, 40, 11, 0, 7); g.fill(); }
+  g.restore(); }
+// Kartenpunkte: Zuhause, Arbeit, Kunden, Kita
+const HOME = [0, 40], DEST = [{ n: 'ARBEIT', p: [-600, -250], k: 'arbeit', ic: 'office' }, { n: 'KUNDEN', p: [620, -230], k: 'kunden_w', ic: 'shop' }, { n: 'KINDERGARTEN', p: [520, 330], k: 'kita_w', ic: 'kita' }];
+function road(a, b) { const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2; return [a, [mx + (b[1] - a[1]) * .12, my - (b[0] - a[0]) * .08], b]; }
+function qpt(r, u) { const [a, c, b] = r; return [(1 - u) * (1 - u) * a[0] + 2 * (1 - u) * u * c[0] + u * u * b[0], (1 - u) * (1 - u) * a[1] + 2 * (1 - u) * u * c[1] + u * u * b[1]]; }
+function drawRoad(g, r, draw, col, gap) { // gap: 0..1 Bruch in der Mitte
+  const seg = (u0, u1) => { g.beginPath(); for (let i = 0; i <= 40; i++) { const u = mix(u0, u1, i / 40), p = qpt(r, u); i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); } g.stroke(); };
+  g.save(); g.lineCap = 'round'; const hg = .09 * gap;
+  for (const [lw, c] of [[34, 'rgba(5,15,45,.55)'], [24, col]]) { g.strokeStyle = c; g.lineWidth = lw; if (gap > 0) { seg(0, Math.min(draw, .5 - hg)); if (draw > .5 + hg) seg(.5 + hg, draw); } else seg(0, draw); }
+  g.setLineDash([16, 18]); g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 3; if (gap > 0) { seg(0, Math.min(draw, .5 - hg)); if (draw > .5 + hg) seg(.5 + hg, draw); } else seg(0, draw); g.setLineDash([]);
+  g.restore(); }
+function icon(g, kind, x, y, s, grey) {
+  g.save(); g.translate(x, y); g.scale(s, s); sh(g, 24, 12, .45, '0,5,25');
+  const col = (c) => grey > 0 ? mixCol(c, '#7C88A6', grey) : c;
+  if (kind === 'home') { g.fillStyle = col('#FFFFFF'); rr(g, -60, -20, 120, 90, 8); g.fill(); nosh(g); g.fillStyle = col(C.red); g.beginPath(); g.moveTo(-78, -14); g.lineTo(0, -80); g.lineTo(78, -14); g.closePath(); g.fill();
+    g.fillStyle = col(C.yel); rr(g, -38, 6, 30, 28, 4); g.fill(); rr(g, 10, 6, 30, 28, 4); g.fill(); g.fillStyle = col('#2B4C9B'); rr(g, -12, 32, 24, 38, 4); g.fill(); }
+  if (kind === 'office') { g.fillStyle = col('#EAF1FF'); rr(g, -56, -110, 112, 180, 8); g.fill(); nosh(g); g.fillStyle = col(C.blue); g.fillRect(-56, -110, 112, 18);
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++) { g.fillStyle = col((r + c) % 3 ? C.yel : '#9FB6E6'); rr(g, -40 + c * 30, -80 + r * 30, 20, 18, 3); g.fill(); } }
+  if (kind === 'shop') { g.fillStyle = col('#FFFFFF'); rr(g, -76, -40, 152, 110, 8); g.fill(); nosh(g);
+    for (let i = 0; i < 6; i++) { g.fillStyle = col(i % 2 ? '#FFFFFF' : C.red); g.beginPath(); g.moveTo(-80 + i * 27, -44); g.lineTo(-80 + (i + 1) * 27, -44); g.lineTo(-80 + (i + 1) * 27, -14); g.arc(-80 + i * 27 + 13.5, -14, 13.5, 0, Math.PI); g.closePath(); g.fill(); }
+    g.fillStyle = col('#9FD3FF'); rr(g, -56, 6, 60, 50, 4); g.fill(); g.fillStyle = col(C.green); rr(g, 18, 2, 38, 68, 4); g.fill(); }
+  if (kind === 'kita') { g.fillStyle = col('#FFFFFF'); rr(g, -64, -24, 128, 96, 8); g.fill(); nosh(g); g.fillStyle = col(C.green); g.beginPath(); g.moveTo(-82, -18); g.lineTo(0, -84); g.lineTo(82, -18); g.closePath(); g.fill();
+    g.fillStyle = col(C.yel); g.beginPath(); g.arc(78, -86, 22, 0, 7); g.fill(); g.fillStyle = col(C.red); rr(g, -46, 2, 26, 26, 13); g.fill(); g.fillStyle = col(C.blue); rr(g, 20, 2, 26, 26, 13); g.fill(); g.fillStyle = col('#FF8A3D'); rr(g, -12, 34, 24, 38, 4); g.fill(); }
+  g.restore(); }
+function mixCol(a, b, k) { const p = h => [1, 3, 5].map(i => parseInt(h.substr(i, 2), 16)); const A = p(a), B = p(b); return `rgb(${A.map((v, i) => Math.round(mix(v, B[i], k))).join(',')})`; }
+function carTop(g, x, y, ang, s) { g.save(); g.translate(x, y); g.rotate(ang); g.scale(s, s); sh(g, 14, 8, .5, '0,5,25');
+  g.fillStyle = C.yel; rr(g, -34, -18, 68, 36, 10); g.fill(); nosh(g); g.fillStyle = '#23324F'; rr(g, 2, -14, 16, 28, 4); g.fill(); rr(g, -24, -13, 12, 26, 3); g.fill();
+  g.fillStyle = '#FFF6C8'; g.fillRect(30, -15, 5, 8); g.fillRect(30, 7, 5, 8); g.restore(); }
+
+// Karte (Szene C und G)
+function mapScene(g, t, st) {
+  g.drawImage(MAPBG, -MAPBG.width / 2, -MAPBG.height / 2);
+  DEST.forEach((d, i) => { const r = road(HOME, d.p); drawRoad(g, r, st.draw[i], st.col[i], st.gap[i]);
+    if (st.gap[i] > .2) { const m = qpt(r, .5); g.save(); g.translate(m[0], m[1]); const k = eo(clamp((st.gap[i] - .2) / .5)); g.scale(k, k); g.fillStyle = C.red; g.beginPath(); g.arc(0, 0, 34, 0, 7); g.fill();
+      g.strokeStyle = '#fff'; g.lineWidth = 8; g.lineCap = 'round'; g.beginPath(); g.moveTo(-13, -13); g.lineTo(13, 13); g.moveTo(13, -13); g.lineTo(-13, 13); g.stroke(); g.restore(); } });
+  // Umgebungsverkehr: alle anderen fahren weiter
+  for (let i = 0; i < 16; i++) { const hor = i % 2 === 0, lane = (i * 137 % 11 - 5) * (hor ? 120 : 150) + (hor ? 0 : 75), sp = 90 + (i * 53 % 70), L = 3200;
+    const u = ((st.t * sp + i * 400) % L) - L / 2; const x = hor ? u * (i % 4 ? 1 : -1) : lane, y = hor ? lane : u * (i % 3 ? 1 : -1);
+    g.save(); g.globalAlpha = .9; g.fillStyle = i % 3 ? '#FFFFFF' : C.yel; g.translate(x, y); g.rotate(hor ? 0 : Math.PI / 2); rr(g, -16, -8, 32, 16, 5); g.fill(); g.fillStyle = 'rgba(255,240,180,.35)'; g.fillRect(16, -7, 26, 14); g.restore(); }
+  DEST.forEach((d, i) => { if (st.draw[i] > .85) { const k = back(lin(st.draw[i], .85, 1)); icon(g, d.ic, d.p[0], d.p[1] - 30, .9 * k, st.grey[i]); } });
+  icon(g, 'home', HOME[0], HOME[1] - 20, .95, 0);
+  if (st.sign > 0) signCar(g, HOME[0] + 70, HOME[1] - 96, 42 * st.sign, 1, 1);
+  if (st.car) { const r = road(HOME, DEST[0].p), u = st.car, p = qpt(r, u), p2 = qpt(r, Math.min(1, u + .01)); carTop(g, p[0], p[1], Math.atan2(p2[1] - p[1], p2[0] - p[0]), 1.3); }
+}
+
+// ---------- Film ----------
+function cam(g, s, cx, cy, tx = 0, ty = 0) { g.translate(W / 2 + tx, H / 2 + ty); g.scale(s, s); g.translate(-cx, -cy); }
+function frame(t) {
+  const g = X; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.filter = 'none'; nosh(g); g.globalCompositeOperation = 'source-over';
+  // Hintergrund: hell / Karte
+  const toMap = eio(lin(t, KV.dasheisst - .1, KV.dasheisst + .55)), fromMap = eio(lin(t, KV.aber - .15, KV.aber + .45));
+  const toMap2 = eio(lin(t, KV.fahren - .35, KV.fahren + .25)), fromMap2 = eio(lin(t, KV.schicken - .2, KV.schicken + .5));
+  const mapA = Math.max(toMap * (1 - fromMap), toMap2);
+  bgLight(g, 1);
+  // leichte ständige Kamerabewegung
+  const drift = [Math.sin(t * .35) * 22, Math.cos(t * .28) * 16];
+
+  // ---------- A: Brief, Blitz, Fahverbot (0 – 6.4) ----------
+  if (t < KV.dasheisst + .6) {
+    g.save(); const push = 1 + .13 * lin(t, 0, KV.dasheisst);
+    const zOut = eio(lin(t, KV.dasheisst - .1, KV.dasheisst + .55)); // Rausfahren in die Karte
+    cam(g, push * mix(1, .22, zOut), 960, 540, drift[0], drift[1] + zOut * 40); g.globalAlpha = 1 - zOut * .0;
+    // Stempel sitzt auf „Fahrverbot“ -> Erschütterung ab dem Wort
+    const shake = Math.max(0, 1 - (t - K.fahrverbot) / .35) * (t > K.fahrverbot ? 1 : 0); g.translate(Math.sin(t * 90) * 10 * shake, Math.cos(t * 77) * 8 * shake);
+    const drop = e4(lin(t, K.brief - .47, K.brief)), open = lin(t, K.geblitzt + .05, K.geblitzt + .45), rise = eio(lin(t, K.geblitzt + .25, K.geblitzt + .9));
+    const slideR = eio(lin(t, KV.n71 - .1, KV.n71 + .5)); // Brief nach rechts, Platz für die 71
+    const signM = eio(lin(t, KV.nichtnur - .35, KV.nichtnur + .35)); // Führerschein wird zum Verbotsschild
+    const outA = eio(lin(t, KV.nichtnur - .4, KV.nichtnur + .1));
+    const ex = mix(960, 1230, slideR), ey = mix(-300, 590, drop);
+    g.save(); g.globalAlpha = 1 - outA; g.translate(-outA * 300, 0);
+    // Brief hinter dem Umschlag
+    if (rise > 0) doc(g, ex, mix(590, 430, rise), .78, mix(0, -.04, rise), { hl: { 1: { col: 'rgba(229,57,43,.14)', a: eo(lin(t, K.n71 - .3, K.n71)) }, 5: { col: 'rgba(229,57,43,.14)', a: eo(lin(t, K.fahrverbot - .3, K.fahrverbot)) } } });
+    g.save(); g.translate(ex, ey + rise * 180); const es = mix(1.4, 1, slideR); g.scale(es, es); envelope(g, 0, 0, mix(-.18, .02, drop), open); g.restore();
+    g.restore();
+    // Führerschein fliegt ein, Stempel
+    const lic = e4(lin(t, K.fahrverbot - .7, K.fahrverbot - .15));
+    if (lic > 0) { const lx = mix(mix(2300, 1300, lic), 960, signM), ly = mix(mix(700, 660, lic), 440, signM), lr = mix(mix(.5, -.08, lic), 0, signM);
+      if (signM < 1) { license(g, lx, ly, mix(1.2, 1.05, signM), lr, signM); stamp(g, lx + 10, ly + 10, 1.0, -.14 + lr, ['FAHRVERBOT', '1 MONAT'], C.red, lin(t, K.fahrverbot - .17, K.fahrverbot), 1 - clamp(signM * 3)); }
+      else signCar(g, 960, 440, 180, lin(t, KV.nichtnur + .3, K.keinauto - .05), eo(lin(t, K.keinauto - .3, K.keinauto))); }
+    // Blitz der Kamera
+    g.restore();
+    const fl = Math.max(0, 1 - Math.abs(t - K.geblitzt - .04) / .12); if (fl > 0) { g.fillStyle = `rgba(255,255,255,${fl * .95})`; g.fillRect(0, 0, W, H); }
+    const fl2 = Math.max(0, 1 - (t - K.geblitzt - .1) / .5) * (t > K.geblitzt + .1 ? 1 : 0); if (fl2 > 0) { g.fillStyle = `rgba(229,57,43,${fl2 * .18})`; g.fillRect(0, 0, W, H); }
+    // Worte
+    g.save(); g.globalAlpha = 1 - zOut;
+    // „71 km/h“ steht auf „einundsiebzig“ (Zähler 50 -> 71 läuft davor ab), „STATT 50“ auf „fünfzig“; „+21“ entfernt (nicht gesprochen)
+    { const v = Math.round(mix(50, 71, eo(lin(t, K.n71 - .3, K.n71)))); kw(g, String(v), 150, 610, 420, v > 50 ? C.red : C.ink, t, K.n71, K.monat - .45); }
+    kw(g, 'km/h', 560, 610, 120, C.red, t, K.n71, K.monat - .45);
+    kw(g, 'STATT 50', 160, 760, 130, C.ink, t, K.n50, K.monat - .45);
+    kw(g, '1 MONAT', 150, 470, 200, C.ink, t, K.monat, KV.nichtnur - .4);
+    kw(g, 'FAHRVERBOT', 150, 670, 200, '#fff', t, K.fahrverbot, KV.nichtnur - .4, { bar: C.red });
+    kw(g, 'KEIN AUTO', 960, 850, 170, C.ink, t, K.keinauto, KV.dasheisst - .15, { align: 'center' });
+    g.restore();
+  }
+  // ---------- C/G: Karte ----------
+  if (mapA > 0) {
+    g.save(); g.globalAlpha = mapA;
+    let s, cy;
+    if (t < KV.aber + .5) { const z = eio(lin(t, KV.dasheisst - .1, KV.dasheisst + .9)); s = mix(4.2, 1, z) * (1 + .06 * lin(t, KV.dasheisst, KV.kita)) * (1 + .22 * eio(lin(t, K.kita_w + .3, KV.aber))); cy = mix(HOME[1] - 96, 0, z) * 1 + mix(0, HOME[1] - 40, eio(lin(t, K.kita_w + .3, KV.aber)));
+      s *= mix(1, 5, eio(lin(t, KV.aber - .15, KV.aber + .5))); }
+    else { const z = eio(lin(t, KV.fahren - .4, KV.fahren + .5)); s = mix(3.5, 1.05, z) * (1 + .05 * lin(t, KV.fahren, KV.schicken)); cy = 0; s *= mix(1, .82, eio(lin(t, KV.schicken - .2, KV.schicken + .5))) * (1 + .06 * lin(t, KV.schicken, DUR)); }
+    cam(g, s, 0, cy, drift[0], drift[1] + 20);
+    const phaseB = t > KV.aber + .5;
+    const draw = DEST.map((d, i) => phaseB ? 1 : eio(lin(t, KV.dasheisst + .25 + i * .18, KV.dasheisst + 1.1 + i * .18)));
+    // Straßenbruch + rotes X fertig auf dem Nomen („Arbeit“, „Kunden“, „Kindergarten“); in Teil B heilen die Straßen auf „fahren“
+    const brk = DEST.map(d => phaseB ? 1 - eio(lin(t, KV.fahren - .1 + DEST.indexOf(d) * .12, KV.fahren + .45 + DEST.indexOf(d) * .12)) : eo(lin(t, K[d.k] - .3, K[d.k])));
+    mapScene(g, t, { t, draw, gap: brk, col: brk.map(b => mixCol(phaseB ? C.yel : C.yel, C.red, clamp(b * 1.4))), grey: brk, sign: phaseB ? 1 - eo(lin(t, KV.fahren, KV.fahren + .4)) : 1,
+      car: phaseB ? eio(lin(t, KV.fahren + .5, KV.schicken + .6)) * .95 : 0, t });
+    g.restore();
+    g.save(); g.globalAlpha = mapA; vign(g, .45);
+    // Worte auf der Karte
+    // je Halbsatz ein Schlagwort = das gesprochene Ziel, rot durchgestrichen (= „kein …“), fertig auf dem Wort.
+    // Die drei stapeln sich links unten (freie Kartenfläche) und bleiben stehen, bis die Karte geht – so bleibt jedes lesbar.
+    if (!phaseB) DEST.forEach((d, i) => kw(g, d.n, 130, 720 + i * 118, 112, '#fff', t, K[d.k], KV.aber - .3, { strike: C.red }));
+    if (phaseB) { kw(g, 'EINFACH WEITER', 960, 890, 140, C.ink, t, K.einfach, KV.schicken - .25, { align: 'center', bar: C.yel }); }
+    g.restore();
+  }
+  // ---------- D/E/F: Bescheid prüfen ----------
+  const docA = eio(lin(t, KV.aber - .1, KV.aber + .45)) * (1 - eio(lin(t, KV.fahren - .35, KV.fahren + .2)));
+  if (docA > 0) {
+    g.save(); g.globalAlpha = docA; const zIn = eio(lin(t, KV.aber - .1, KV.aber + .6));
+    const split = eio(lin(t, KV.mess - .35, KV.mess + .3)) * (1 - eio(lin(t, KV.ein - .1, KV.ein + .45)));
+    const fi = eio(lin(t, K.eich - .3, K.eich + .15)) + eio(lin(t, K.foto - .3, K.foto + .15)) - eio(lin(t, KV.punkt, KV.punkt + .6)); // Kamera folgt dem genannten Beleg
+    const pan = (960 - (300 + 360 * fi)) * .3 * split;
+    cam(g, mix(.35, 1, zIn) * (1 + .1 * lin(t, KV.aber, KV.fahren)) * (1 + .05 * split) * mix(1, 2.2, eio(lin(t, KV.fahren - .35, KV.fahren + .2))), 960, 540, drift[0] + pan, drift[1]);
+    const dx = mix(1280, 1240, split), dsc = mix(.98, .78, split);
+    // roter Kringel um die Eichung: fertig auf „Fehler“; Prüfbalken + Häkchen ab „prüft“
+    const fk = lin(t, K.fehler - .35, K.fehler), scan = lin(t, K.prueft - .2, K.prueft + 1.2);
+    const chk = [0, 1, 2, 3, 4, 5].map(i => eo(lin(t, K.prueft - .15 + i * .2, K.prueft + .1 + i * .2)));
+    doc(g, mix(dx, 1560, split), 500, dsc * mix(1, .85, split), -.02, { hl: { 4: { col: 'rgba(229,57,43,.18)', a: eo(fk) } }, check: chk, checkCol: { 4: C.red } });
+    // roter Kringel um die Eichung (Datum liegt vor dem Messtag)
+    if (fk > 0) { g.save(); g.translate(mix(dx, 1560, split), 500); g.scale(dsc * mix(1, .85, split), dsc * mix(1, .85, split)); g.rotate(-.02); g.strokeStyle = C.red; g.lineWidth = 7; g.lineCap = 'round'; g.beginPath();
+      for (let i = 0; i <= 64 * fk; i++) { const a = -2.4 + i / 64 * Math.PI * 2.1, px = 60 + Math.cos(a) * (140 + i * .3), py = -360 + 222 + 4 * 78 - 12 + Math.sin(a) * 40; i ? g.lineTo(px, py) : g.moveTo(px, py); } g.stroke(); g.restore(); }
+    // Lupe gleitet über das Dokument
+    const lensIn = eio(lin(t, KV.aber + .2, K.fehler - .3)), lensOut = eio(lin(t, KV.recht - .2, KV.recht + .3));
+    if (lensIn > 0 && lensOut < 1) { const lx = mix(1900, dx + 90 * dsc, lensIn) + lensOut * 800, ly = mix(900, 500 + (-138 + 312 - 12) * dsc, lensIn);
+      g.save(); g.globalAlpha = docA * (1 - lensOut); g.translate(lx, ly);
+      for (let i = 0; i < 3; i++) { const rk = eo(lin(t, K.fehler - .3 + i * .1, K.fehler + .4 + i * .1)); if (rk > 0) { g.strokeStyle = `rgba(31,95,214,${.5 * (1 - rk * .6)})`; g.lineWidth = 3; g.beginPath(); g.arc(0, 0, 150 + rk * (60 + i * 50), 0, 7); g.stroke(); } }
+      g.rotate(.7); g.fillStyle = '#23324F'; rr(g, 120, -18, 190, 36, 16); g.fill(); g.rotate(-.7);
+      g.beginPath(); g.arc(0, 0, 132, 0, 7); g.fillStyle = 'rgba(210,230,255,.18)'; g.fill(); g.strokeStyle = '#23324F'; g.lineWidth = 18; g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 6; g.beginPath(); g.arc(0, 0, 108, 3.6, 4.5); g.stroke(); g.restore(); }
+    // grüner Prüfbalken (Fokus)
+    if (scan > 0 && scan < 1) { const sy = mix(160, 900, eio(scan)); g.save(); const gr = g.createLinearGradient(0, sy - 70, 0, sy + 8); gr.addColorStop(0, 'rgba(31,163,92,0)'); gr.addColorStop(1, 'rgba(31,163,92,.35)');
+      g.fillStyle = gr; g.fillRect(dx - 330 * dsc, sy - 70, 660 * dsc, 78); g.fillStyle = C.green; g.fillRect(dx - 340 * dsc, sy, 680 * dsc, 6); g.restore(); }
+    // drei Belege fächern sich auf (ein Bescheid -> seine Teile)
+    // Kartentitel = exakt das gesprochene Wort; Rahmen (grün, bei der Eichung rot) fertig auf dem Wort
+    if (split > 0) { const items = [['Messprotokoll', K.mess, 'prot'], ['Eichung', K.eich, 'eich'], ['Foto', K.foto, 'foto']];
+      items.forEach(([name, tk, kind], i) => { const k = eio(clamp(split * 1.6 - i * .25)); if (k <= 0) return; const on = eo(lin(t, tk - .3, tk));
+        const x = mix(1500, 300 + i * 360, k), y = mix(500, 520 + (i === 1 ? -20 : 10), k) - on * 20 + Math.sin(t * 2.2 + i * 1.3) * 7 * k, rot = mix(0, (i - 1) * .05, k) + Math.sin(t * 1.7 + i) * .012;
+        g.save(); g.translate(x, y); g.rotate(rot); g.scale(k * (1 + on * .08), k * (1 + on * .08)); sh(g, 30 + on * 20, 16, .3); rr(g, -140, -190, 280, 380, 12); g.fillStyle = '#fff'; g.fill(); nosh(g);
+        g.strokeStyle = on ? (kind === 'eich' ? C.red : C.green) : 'transparent'; g.lineWidth = 6 * on; rr(g, -140, -190, 280, 380, 12); if (on > 0) g.stroke();
+        txt(g, name, -118, -142, '34px DC', C.ink);
+        if (kind === 'prot') { for (let r = 0; r < 7; r++) { g.fillStyle = r % 2 ? '#E8EEF7' : '#fff'; g.fillRect(-118, -110 + r * 38, 236, 38); g.fillStyle = '#9FB0C8'; g.fillRect(-106, -96 + r * 38, 80, 8); g.fillRect(10, -96 + r * 38, 60 + (r * 17 % 40), 8); } }
+        if (kind === 'eich') { g.fillStyle = C.blue; g.beginPath(); g.arc(0, -30, 58, 0, 7); g.fill(); g.fillStyle = C.yel; for (let s = 0; s < 12; s++) { const a = s / 12 * Math.PI * 2; g.beginPath(); g.arc(Math.cos(a) * 38, -30 + Math.sin(a) * 38, 5, 0, 7); g.fill(); }
+          txt(g, '31.12.2024', -118, 110, '42px DC', on ? C.red : C.ink); if (on > 0) { g.save(); g.globalAlpha *= on; txt(g, 'ABGELAUFEN', -118, 160, '34px DC', C.red, 'left', 2); g.restore(); } }
+        if (kind === 'foto') { g.fillStyle = '#1D2640'; g.fillRect(-118, -112, 236, 230); const fg = g.createRadialGradient(0, 0, 10, 0, 0, 150); fg.addColorStop(0, 'rgba(255,255,230,.5)'); fg.addColorStop(1, 'rgba(255,255,230,0)'); g.fillStyle = fg; g.fillRect(-118, -112, 236, 230);
+          g.fillStyle = '#C9D6EA'; g.beginPath(); g.moveTo(-80, 60); g.lineTo(-64, -10); g.lineTo(64, -10); g.lineTo(80, 60); g.closePath(); g.fill(); g.fillStyle = '#3A4A70'; g.beginPath(); g.moveTo(-52, -2); g.lineTo(-40, -44); g.lineTo(40, -44); g.lineTo(52, -2); g.closePath(); g.fill();
+          g.fillStyle = C.yel; g.beginPath(); g.arc(-56, 36, 10, 0, 7); g.arc(56, 36, 10, 0, 7); g.fill(); txt(g, '71 km/h', -104, 104, '24px DC', '#fff', 'left', 1); }
+        g.restore(); }); }
+    // Stempel: eingestellt
+    stamp(g, 1290, 480, 1.15, -.12, ['EINGESTELLT'], C.green, lin(t, K.eingestellt - .2, K.eingestellt), 1);
+    g.restore();
+    // Worte
+    g.save(); g.globalAlpha = docA;
+    kw(g, 'FEHLER', 150, 640, 200, '#fff', t, K.fehler, KV.recht - .25, { bar: C.red });
+    kw(g, 'RECHT AM STEUER', 150, 640, 128, '#fff', t, K.recht, KV.mess - .45, { bar: C.blue });
+    kw(g, 'PUNKT FÜR PUNKT', 960, 170, 130, C.ink, t, K.punkt, KV.ein - .2, { align: 'center' });
+    kw(g, 'EINGESTELLT', 150, 640, 170, '#fff', t, K.eingestellt, KV.fahren - .4, { bar: C.green });
+    g.restore();
+  }
+  // ---------- H: Schluss – blaues Hinweisschild ----------
+  const endA = eio(lin(t, KV.schicken - .2, KV.schicken + .5));
+  if (endA > 0) {
+    g.save(); const rise = e4(lin(t, KV.schicken - .2, KV.schicken + .6)); g.translate(0, (1 - rise) * 700); g.translate(drift[0] * .5, drift[1] * .5); const sp = 1 + .05 * lin(t, KV.schicken, DUR); g.translate(W / 2, H / 2); g.scale(sp, sp); g.translate(-W / 2, -H / 2);
+    const sx = 230, sy = 90, sw = 1460, sh2 = 760; sh(g, 60, 30, .35); rr(g, sx, sy, sw, sh2, 34); g.fillStyle = C.blue; g.fill(); nosh(g);
+    g.strokeStyle = '#fff'; g.lineWidth = 12; rr(g, sx + 22, sy + 22, sw - 44, sh2 - 44, 22); g.stroke();
+    // Zeichen: Lenkrad mit Paragraf
+    g.save(); g.translate(sx + 210, sy + 250); g.strokeStyle = '#fff'; g.lineWidth = 16; g.beginPath(); g.arc(0, 0, 92, 0, 7); g.stroke(); g.lineWidth = 12; g.beginPath(); g.moveTo(-88, 10); g.lineTo(-30, 18); g.moveTo(88, 10); g.lineTo(30, 18); g.moveTo(0, 40); g.lineTo(0, 90); g.stroke();
+    g.beginPath(); g.arc(0, 14, 30, 0, 7); g.fillStyle = C.yel; g.fill(); txt(g, '§', 0, 30, '46px DC', C.ink, 'center'); g.restore();
+    // Schlusskarte: Name + ein Wort Fachgebiet; Angebot „ERSTEINSCHÄTZUNG / KOSTENLOS“ in zwei Teilen auf ihren Wörtern; Kontakt.
+    // „Bescheid schicken“ ist kein Text mehr, sondern ein Bild: Der Bescheid fliegt auf „Bescheid“ in den Pfeil.
+    kw(g, 'RECHT AM STEUER', sx + 360, sy + 290, 164, '#fff', t, KV.schicken + .45);
+    small(g, 'Verkehrsrecht', sx + 368, sy + 380, 50, '#D6E4FF', t, KV.schicken + .5);
+    const ak = eo(lin(t, K.schicken, K.schicken + .5)); if (ak > 0) { g.save(); g.globalAlpha = ak; g.fillStyle = '#fff'; g.translate(sx + 330 + ak * 20, sy + 520);
+      g.beginPath(); g.moveTo(0, -16); g.lineTo(60, -16); g.lineTo(60, -40); g.lineTo(104, 0); g.lineTo(60, 40); g.lineTo(60, 16); g.lineTo(0, 16); g.closePath(); g.fill(); g.restore();
+      const ek = lin(t, K.bescheid2 - .55, K.bescheid2 + .15); if (ek > 0 && ek < 1) { g.save(); g.globalAlpha = Math.min(1, Math.sin(Math.PI * ek) * 2); g.translate(mix(sx - 60, sx + 300, eio(ek)), sy + 520 - Math.sin(Math.PI * ek) * 40); g.rotate(-.1 + ek * .2);
+        g.fillStyle = '#fff'; rr(g, -44, -28, 88, 56, 6); g.fill(); g.strokeStyle = C.blue; g.lineWidth = 3; g.beginPath(); g.moveTo(-44, -28); g.lineTo(0, 4); g.lineTo(44, -28); g.stroke(); g.fillStyle = C.red; g.fillRect(-36, -20, 26, 8); g.restore(); } }
+    // gelbes Zusatzschild
+    const yk = e4(lin(t, K.erst - .3, K.erst)); if (yk > 0) { g.save(); g.translate(sx + 760, sy + 525); g.scale(mix(.6, 1, yk), mix(.6, 1, yk)); g.globalAlpha = yk; sh(g, 20, 10, .3);
+      rr(g, -40, -80, 660, 160, 16); g.fillStyle = C.yel; g.fill(); nosh(g); g.strokeStyle = C.ink; g.lineWidth = 6; rr(g, -28, -68, 636, 136, 10); g.stroke();
+      txt(g, 'ERSTEINSCHÄTZUNG', 290, -6, '64px DC', C.ink, 'center', 1);
+      const kk = back(lin(t, K.kostenlos - .25, K.kostenlos)); if (kk > 0) { g.save(); g.translate(290, 32); g.scale(kk, kk); txt(g, 'KOSTENLOS', 0, 18, '58px DC', C.red, 'center', 4); g.restore(); }
+      g.restore(); }
+    small(g, 'recht-am-steuer.de   ·   06221 480 90 12', sx + 730, sy + 680, 50, '#fff', t, K.kostenlos + .25, null, 'center');
+    g.restore();
+  }
+  // Korn + Blende
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; nosh(g);
+  g.globalCompositeOperation = 'overlay'; g.globalAlpha = .16; g.drawImage(GRAIN[Math.floor(t * 24) % GRAIN.length], 0, 0, W, H); g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+  vign(g, .18);
+  const f = Math.max(1 - lin(t, 0, .25), lin(t, DUR - .45, DUR)); if (f > 0) { g.fillStyle = `rgba(0,0,0,${f})`; g.fillRect(0, 0, W, H); }
+}
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => {
+  await Promise.all([document.fonts.load('100px DC'), document.fonts.load('40px DA')]); GRAIN = grain(); MAPBG = makeMapBg(); frame(0); return true; })(),
+  seek(t) { frame(t); } };
+</script>
+</body></html>

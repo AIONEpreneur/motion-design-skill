@@ -1,0 +1,4 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Charon, Wortzeiten neu vermessen und an der Pegelkurve geprüft)
+const K = {"sams": 0.32, "nacht": 0.9, "zwei1": 1.85, "pflege": 2.17, "fallen": 2.87, "krank": 3.64, "hier": 4.33, "anrufe": 4.76, "da": 5.34, "luecken": 5.72, "ueberall": 6.27, "und1": 7.27, "selbst": 8.32, "zum": 9.18, "dritten": 9.3, "monat": 10.14, "mit": 11.07, "pb1": 11.25, "melden": 12.02, "luecke": 12.66, "in1": 13.14, "zwei2": 13.3, "minuten": 13.47, "wir": 14.53, "gepr": 15.22, "fach": 15.62, "aus2": 16.27, "region": 16.78, "nach": 17.62, "spaet": 17.79, "n48": 18.49, "stunden": 19.2, "ist": 19.75, "schicht": 20.04, "besetzt": 20.37, "und2": 21.07, "ihr": 21.35, "sams2": 21.55, "gehoert": 22.17, "ihnen": 22.77, "pb": 23.56, "personal": 24.27, "melden2": 25.0, "heute": 25.53, "offene": 25.97, "schicht2": 26.36};
+const CUT = {"B": 3.34, "C": 7.02, "D": 10.72, "E": 14.3, "F": 17.32, "G": 20.77, "H": 23.26};
+const DUR = 28.65;

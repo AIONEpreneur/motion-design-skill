@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Achird, Wortzeiten neu vermessen und an der Pegelkurve geprüft)
+const K = {"durch": 0.31, "schon": 1.42, "zwei": 2.56, "fehler": 2.92, "links1": 3.3, "dabei": 4.68, "sechs": 5.52, "wochen": 5.82, "job": 6.82, "und1": 7.4, "ohne": 7.66, "auto": 7.93, "kommen": 7.98, "nicht": 8.64, "hin": 9.0, "bei": 9.67, "gruen": 9.99, "pfeil": 10.3, "ueben": 10.72, "schwach": 11.64, "zehn": 12.9, "links2": 13.397, "sitzt": 14.63, "dann": 15.62, "probe": 16.12, "echten": 17.2, "strecke": 17.55, "und2": 18.73, "diesmal": 18.9, "bestanden": 19.7, "mont": 20.65, "selbst": 21.82, "arbeit": 22.47, "fahr": 23.2, "gruen2": 23.87, "erste": 24.94, "kostenlos": 26.04};
+const DUR = 28.28;

@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Sulafat)
+const K = {"gitarre": 0.45, "acht": 1.29, "ecke": 2.22, "drei": 3.08, "drei2": 5.16, "ein": 9.66, "videos": 4.08, "nach": 4.91, "wochen": 5.46, "auf": 6.0, "dabei": 7.26, "tochter": 8.56, "eins": 9.15, "lied": 9.91, "ihnen": 10.16, "abends": 11.02, "bett": 11.36, "tl": 12.39, "tonleiter": 12.55, "minuten": 14.95, "festem": 16.58, "nicht": 13.27, "allein": 13.81, "n30": 14.63, "woche": 15.45, "lehrer": 16.81, "ton1": 17.64, "ton2": 18.16, "ihrem": 18.9, "tempo": 19.23, "zwoelf": 20.37, "sitzt": 21.13, "erstes": 21.76, "lied2": 22.2, "heute": 22.69, "spielen": 23.42, "vor": 24.2, "tl2": 25.23, "musikschule": 25.71, "erste": 26.83, "probe": 27.1, "kostenlos": 28.06};
+const DUR = 30.31;

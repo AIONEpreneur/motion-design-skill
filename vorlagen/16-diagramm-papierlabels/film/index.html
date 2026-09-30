@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Wärmewerk – V7</title>
+<style>
+@font-face{font-family:'CP';src:url(CourierPrime-Bold.ttf)}
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Wärmewerk V5 – im Stil des LASIK-Explainers (Andy Diep, Version A): gekörnter Nachthimmel mit glühendem Punkt,
+// Creme-Papierstreifen mit Schreibmaschinenschrift, Pergament mit Wolkenflecken, blaue Raster-Flächen (Halbton),
+// Material aus seinem eigenen Wort, blaue Etikettenstapel oben links, rot-orange Kreise/Striche/Schnittlinien. Siehe ../STILBIBEL.md
+const W = 1920, H = 1080;
+const P = { sky: '#253c6c', parch: '#e6ddc3', blue: '#446db3', blueD: '#2f4f8a', cream: '#efe7d4', navyT: '#27365f', red: '#d9603f', redL: '#e8784f', band: '#efe8d6' };
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - x, 3), eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+const idle = (t, f, a, ph = 0) => Math.sin(t * f + ph) * a;
+function trace(g, pts) { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); }
+function partial(pts, p) { if (p >= 1) return pts; if (p <= 0) return [pts[0]]; let L = 0; const d = [0]; for (let i = 1; i < pts.length; i++) { L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); d.push(L); }
+  const tg = L * p, o = [pts[0]]; for (let i = 1; i < pts.length; i++) { if (d[i] <= tg) o.push(pts[i]); else { const k = (tg - d[i - 1]) / (d[i] - d[i - 1] || 1); o.push([mix(pts[i - 1][0], pts[i][0], k), mix(pts[i - 1][1], pts[i][1], k)]); break; } } return o; }
+function stroke(g, pts, col, lw, p = 1, dash = null, off = 0) { if (p <= 0) return; g.save(); g.strokeStyle = col; g.lineWidth = lw; g.lineCap = 'round'; g.lineJoin = 'round'; if (dash) { g.setLineDash(dash); g.lineDashOffset = off; } trace(g, partial(pts, p)); g.stroke(); g.restore(); }
+function wobEll(cx, cy, rx, ry, seed = 1, turns = 1.12) { const o = []; for (let i = 0; i <= 70; i++) { const a = -2.6 + i / 70 * Math.PI * 2 * turns, r = 1 + .06 * Math.sin(i * .35 + seed); o.push([cx + Math.cos(a) * rx * r, cy + Math.sin(a) * ry * r]); } return o; }
+function fnt(g, s) { g.font = `${s}px CP`; }
+// Gasflamme mit seitlicher Zunge (Icon-Form, kein Tropfen)
+function flamePath(g, r, fl = 1) { const P0 = (x, y) => [x * r, y * r]; g.beginPath(); g.moveTo(...P0(.08, -1 * fl)); g.bezierCurveTo(...P0(.45, -.55), ...P0(.66, -.2), ...P0(.62, .28)); g.bezierCurveTo(...P0(.6, .72), ...P0(.3, .95), ...P0(0, .95));
+  g.bezierCurveTo(...P0(-.32, .95), ...P0(-.62, .7), ...P0(-.6, .28)); g.bezierCurveTo(...P0(-.58, -.02), ...P0(-.42, -.25), ...P0(-.3, -.5)); g.bezierCurveTo(...P0(-.24, -.2), ...P0(-.14, -.08), ...P0(-.06, -.04)); g.bezierCurveTo(...P0(-.14, -.45), ...P0(-.04, -.75), ...P0(.08, -1 * fl)); g.closePath(); }
+
+// ---------- Texturen ----------
+let SKY, PARCH, HT, HTD, BORDER; const jagBill = (() => { const R = rng(31), p = []; for (let x = -290; x <= 290; x += 12) p.push([x, -175 + (R() - .5) * 3]); for (let y = -175; y <= 175; y += 6) p.push([290 + (R() - .5) * 4, y]); for (let x = 290; x >= -290; x -= 12) p.push([x, 175 + (R() - .5) * 3]); for (let y = 175; y >= -175; y -= 6) p.push([-290 + (R() - .5) * 4, y]); return p; })();
+function grainOn(g, w, h, amt, seed, speck = 0) { const im = g.getImageData(0, 0, w, h), d = im.data, R = rng(seed); for (let i = 0; i < d.length; i += 4) { let v = (R() + R() - 1) * amt; if (speck && R() < speck) v += 40 + R() * 60; d[i] += v; d[i + 1] += v; d[i + 2] += v; } g.putImageData(im, 0, 0); }
+function blots(g, w, h, R, n, cols, rMin, rMax, aMin, aMax) { for (let i = 0; i < n; i++) { const x = R() * w, y = R() * h, r = mix(rMin, rMax, R()), c = cols[Math.floor(R() * cols.length)], a = mix(aMin, aMax, R());
+  const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(${c},${a})`); gr.addColorStop(1, `rgba(${c},0)`); g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r); } }
+function mkSky() { const c = mk(W + 200, H + 200), g = c.getContext('2d'), R = rng(3); g.fillStyle = P.sky; g.fillRect(0, 0, c.width, c.height);
+  blots(g, c.width, c.height, R, 70, ['70,100,160', '22,36,80', '85,115,170'], 140, 420, .06, .2); grainOn(g, c.width, c.height, 22, 4, .06); return c; }
+function mkParch() { const c = mk(W + 1400, H + 600), g = c.getContext('2d'), R = rng(5); g.fillStyle = P.parch; g.fillRect(0, 0, c.width, c.height);
+  blots(g, c.width, c.height, R, 90, ['165,146,112', '245,238,222', '190,172,138'], 160, 520, .2, .55); grainOn(g, c.width, c.height, 14, 6, .006); return c; }
+function mkHT(base, dot, seed) { const c = mk(96, 96), g = c.getContext('2d'), R = rng(seed); g.fillStyle = base; g.fillRect(0, 0, 96, 96); g.fillStyle = dot;
+  for (let y = 0; y < 96; y += 6) for (let x = (y / 6 % 2) * 3; x < 96; x += 6) { g.beginPath(); g.arc(x, y, 1.35 + R() * .3, 0, 7); g.fill(); }
+  grainOn(g, 96, 96, 14, seed + 1); return g.createPattern(c, 'repeat'); }
+function mkBorder() { const c = mk(W, H), g = c.getContext('2d'); g.fillStyle = P.blueD;
+  for (let y = 0; y < H; y += 14) for (let x = (y / 14 % 2) * 7; x < W; x += 14) { const dx = Math.max(0, Math.abs(x - W / 2) - W * .36) / (W * .14), dy = Math.max(0, Math.abs(y - H / 2) - H * .3) / (H * .2), d = Math.min(1, Math.max(dx, dy)); if (d <= 0) continue; g.beginPath(); g.arc(x, y, d * 5.5, 0, 7); g.fill(); } return c; }
+
+// ---------- Papierstreifen mit Schreibmaschinenschrift ----------
+const LBS = new Map();
+function jag(w, h, seed) { const R = rng(seed), p = []; p.push([0, 0]); for (let x = 0; x <= w; x += 14) p.push([x, (R() - .5) * 2]); for (let y = 0; y <= h; y += 5) p.push([w + (y / 5 % 2 ? 3 : -2) + R() * 2, y]);
+  for (let x = w; x >= 0; x -= 14) p.push([x, h + (R() - .5) * 2]); for (let y = h; y >= 0; y -= 5) p.push([(y / 5 % 2 ? -3 : 2) - R() * 2, y]); return p; }
+// o: t0 (Aufklatschen), cps, kind 'cream'|'blue', size, rot, align, a, strike:[t, c0, c1], circle:[t, c0, c1], fade:[t0,t1]
+function label(g, t, x, y, s, o) { const t0 = o.t0; if (t < t0) return 0; const sz = o.size || 32, cw = (() => { g.save(); fnt(g, sz); const w = g.measureText('M').width; g.restore(); return w; })();
+  const pad = sz * .55, w = cw * s.length + pad * 2, h = sz * 1.45, k = eo(lin(t, t0, t0 + .2)), a = (o.a ?? 1) * k * (o.fade ? 1 - lin(t, o.fade[0], o.fade[1]) : 1); if (a <= 0) return w;
+  const x0 = o.align === 'center' ? x - w / 2 : o.align === 'right' ? x - w : x;
+  g.save(); g.globalAlpha *= a; g.translate(x0 + w / 2, y); g.rotate(o.rot || 0); const sc = mix(1.08, 1, k); g.scale(sc, sc); g.translate(-w / 2, -h / 2);
+  const key = s + '|' + sz + '|' + (o.seed || 1); if (!LBS.has(key)) LBS.set(key, jag(w, h, (o.seed || 1) + s.length * 7)); const pts = LBS.get(key);
+  g.save(); g.shadowColor = 'rgba(20,20,40,.35)'; g.shadowBlur = 6; g.shadowOffsetY = 3; trace(g, pts); g.closePath(); g.fillStyle = o.kind === 'blue' ? HT : P.cream; g.fill(); g.restore();
+  if (o.kind !== 'blue') { g.save(); trace(g, pts); g.closePath(); g.clip(); g.fillStyle = 'rgba(160,140,100,.10)'; for (let i = 0; i < 6; i++) g.fillRect(0, h * (i / 6), w, 1); g.restore(); }
+  const n = s.length; fnt(g, sz); g.fillStyle = o.col || (o.kind === 'blue' ? '#f4eee0' : P.navyT); g.textBaseline = 'middle'; g.fillText(s.slice(0, Math.max(0, n)), pad, h / 2 + sz * .04);
+  if (o.strike && t > o.strike[0]) { const q = lin(t, o.strike[0], o.strike[0] + .2); stroke(g, [[pad + o.strike[1] * cw - 4, h / 2 + 2], [pad + o.strike[2] * cw + 4, h / 2 - 1]], P.red, 4, q); }
+  if (o.circle && t > o.circle[0]) { const q = eo(lin(t, o.circle[0], o.circle[0] + .3)), cx = pad + (o.circle[1] + o.circle[2]) / 2 * cw, rx = (o.circle[2] - o.circle[1]) / 2 * cw + 16; stroke(g, wobEll(cx, h / 2, rx, h * .62, 2), P.red, 3.4, q); }
+  g.restore(); return w; }
+// Stapel oben links (blaue Streifen), wie „machine 1: …“
+function stack(g, t, items, x = 110, y = 120, fade) { x += Math.sin(t * .7) * 6; let yy = y + Math.sin(t * .9) * 4; items.forEach((it, i) => { const [s, t0, sz0, extra] = it; const sz = (sz0 || 34) * .9; label(g, t, x, yy, s, Object.assign({ t0, kind: 'blue', size: sz, rot: [-.006, .004, -.003, .005][i % 4], seed: i + 3, cps: 44, fade }, extra || {})); yy += sz * 1.45 + 14; }); }
+
+// ---------- Diagramm-Teile ----------
+function starburst(g, x, y, r, t, col = [232, 96, 58]) { const R = rng(9); const pulse = .85 + .15 * Math.sin(t * 6);
+  const gr = g.createRadialGradient(x, y, 0, x, y, r * 2.4); gr.addColorStop(0, `rgba(${col},.55)`); gr.addColorStop(1, `rgba(${col},0)`); g.fillStyle = gr; g.fillRect(x - r * 2.5, y - r * 2.5, r * 5, r * 5);
+  g.save(); g.strokeStyle = `rgba(${col},.9)`; g.lineWidth = 1.6; for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2 + R() * .2, l = r * (.6 + R() * .9) * pulse; g.beginPath(); g.moveTo(x + Math.cos(a) * 3, y + Math.sin(a) * 3); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke(); } g.restore();
+  g.beginPath(); g.arc(x, y, 4.5, 0, 7); g.fillStyle = '#ffd9b8'; g.fill(); }
+function wordFill(g, pts, word, col, sz, t, reveal = 1, lineH = 1.25, off = 0) { if (reveal <= 0) return; g.save(); trace(g, pts); g.closePath(); g.clip(); const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]); const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  g.fillStyle = col; fnt(g, sz); g.textBaseline = 'middle'; const line = (word + ' ').repeat(Math.ceil((x1 - x0) / (sz * .6 * (word.length + 1))) + 2); let r = 0;
+  for (let y = y0 + sz * .6; y < y1 + sz; y += sz * lineH, r++) { if ((y - y0) / (y1 - y0 + 1) > reveal) break; g.fillText(line, x0 - (r * sz * 1.7 % (sz * .6 * (word.length + 1))) - off, y); } g.restore(); }
+// Rund gebogenes Wortband (wie das „cornea“-Band): Wörter entlang konzentrischer Bögen
+function arcBand(g, cx, cy, r0, r1, a0, a1, word, col, sz, reveal, t) { g.save(); g.beginPath(); g.arc(cx, cy, r1, a0, a1); g.arc(cx, cy, r0, a1, a0, true); g.closePath(); g.fillStyle = P.band; g.fill(); g.clip();
+  fnt(g, sz); g.fillStyle = col; g.textBaseline = 'middle'; const cw = g.measureText('m').width; let row = 0;
+  for (let r = r0 + sz * .7; r < r1; r += sz * 1.15, row++) { const step = cw / r, n = Math.floor((a1 - a0) / step); const aEnd = mix(a0, a1, reveal); let i = 0; const txt = (word + ' ').repeat(400); const sh = (row * 3) % (word.length + 1);
+    for (let a = a0 + step / 2; a < aEnd; a += step, i++) { const ch = txt[i + sh]; if (ch === ' ') continue; g.save(); g.translate(cx + Math.cos(a) * r, cy + Math.sin(a) * r); g.rotate(a + Math.PI / 2); g.fillText(ch, -cw / 2, 0); g.restore(); } }
+  g.restore(); g.save(); g.strokeStyle = 'rgba(47,79,138,.55)'; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, r1, a0, mix(a0, a1, reveal)); g.stroke(); g.beginPath(); g.arc(cx, cy, r0, a0, mix(a0, a1, reveal)); g.stroke(); g.restore(); }
+function machineBox(g, x, y, w, h, o = {}) { g.save(); g.translate(x, y); g.save(); g.shadowColor = 'rgba(40,40,60,.35)'; g.shadowBlur = 8; g.shadowOffsetX = 5; g.shadowOffsetY = 6;
+  g.beginPath(); g.rect(-w / 2, -h / 2, w, h); g.fillStyle = HT; g.fill(); g.restore();
+  g.fillStyle = P.cream; g.fillRect(-w / 2, -h / 2 + h * .12, w, h * .08); g.fillStyle = P.red; g.fillRect(-w / 2, -h / 2 + h * .22, w, 3);
+  if (o.fan) { g.beginPath(); g.arc(-w * .12, h * .12, h * .27, 0, 7); g.fillStyle = P.cream; g.fill(); g.strokeStyle = P.blueD; g.lineWidth = 2.5; g.stroke(); for (let i = 0; i < 3; i++) { const a = o.fan * 12 + i * 2.09; g.beginPath(); g.moveTo(-w * .12, h * .12); g.quadraticCurveTo(-w * .12 + Math.cos(a + .6) * h * .2, h * .12 + Math.sin(a + .6) * h * .2, -w * .12 + Math.cos(a) * h * .24, h * .12 + Math.sin(a) * h * .24); g.stroke(); } }
+  if (o.dot !== false) { g.beginPath(); g.arc(w * .3, h * .15, 7, 0, 7); g.fillStyle = o.dotCol || P.red; g.fill(); }
+  g.fillStyle = P.blueD; g.fillRect(-w * .2, h / 2, w * .4, 8); g.restore(); }
+
+// ---------- Hausquerschnitt (Welt-Koordinaten auf dem Pergament) ----------
+const HX0 = 1080, HX1 = 1640, GY = 820, KY = 1000;
+const rooms = [[HX0 + 24, 600, 256, 196], [1368, 600, 248, 196], [HX0 + 24, 404, 256, 176], [1368, 404, 248, 176]];
+function rectP(x, y, w, h) { return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]; }
+function diagram(g, t, st) {
+  // Erdreich (Halbton), Keller ausgeschnitten
+  g.save(); g.fillStyle = HT; g.fillRect(-400, GY, 2800, 500); g.restore();
+  g.save(); g.strokeStyle = 'rgba(239,231,212,.7)'; g.lineWidth = 3; g.beginPath(); g.moveTo(-400, GY); g.lineTo(2400, GY); g.stroke(); g.restore();
+  // Haus: Mauern + Dach als blaue Rasterfläche mit Creme-Kontur
+  g.save(); g.shadowColor = 'rgba(40,40,60,.3)'; g.shadowBlur = 10; g.shadowOffsetX = 6; g.shadowOffsetY = 6; g.beginPath(); g.moveTo(HX0 - 30, 392); g.lineTo(1360, 210); g.lineTo(HX1 + 30, 392); g.lineTo(HX1, 392); g.lineTo(HX1, KY); g.lineTo(HX0, KY); g.lineTo(HX0, 392); g.closePath(); g.fillStyle = HT; g.fill(); g.restore();
+  g.save(); g.strokeStyle = 'rgba(239,231,212,.85)'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(HX0 - 30, 392); g.lineTo(1360, 210); g.lineTo(HX1 + 30, 392); g.closePath(); g.stroke();
+  g.strokeStyle = 'rgba(40,62,110,.9)'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(HX0 - 36, 396); g.lineTo(1360, 204); g.lineTo(HX1 + 36, 396); g.lineTo(HX1 + 4, 396); g.lineTo(HX1 + 4, GY); g.moveTo(HX0 - 4, GY); g.lineTo(HX0 - 4, 396); g.lineTo(HX0 - 36, 396); g.stroke(); g.restore();
+  // Räume + Keller (Papier-Innen)
+  const inner = '#efe6cf'; [...rooms, [HX0 + 24, GY + 12, HX1 - HX0 - 48, KY - GY - 30]].forEach((r, i) => { g.fillStyle = inner; g.fillRect(...r); });
+  // Kälte: Räume füllen sich mit „kalt“, Wärme: mit „warm“
+  rooms.forEach((r, i) => { const kp = st.cold * (1 - st.warm), wp = st.warm;
+    if (kp > 0) { g.save(); g.globalAlpha = kp; g.fillStyle = 'rgba(120,160,215,.16)'; g.fillRect(...r); wordFill(g, rectP(...r), 'kalt', 'rgba(47,79,138,.62)', 13, t, st.coldRev, 1.15); g.restore(); }
+    if (wp > 0) { g.save(); g.globalAlpha = wp; g.fillStyle = 'rgba(232,120,79,.14)'; g.fillRect(...r); wordFill(g, rectP(...r), 'warm', 'rgba(217,96,63,.8)', 13, t, st.warmRev, 1.15, -((t * 12) % 40)); g.restore(); } });
+  // Heizkörper
+  rooms.forEach((r, i) => { const x = r[0] + (i % 2 ? r[2] - 70 : 16), y = r[1] + r[3] - 62; g.fillStyle = st.warm > .5 ? '#f3c7b0' : P.cream; g.fillRect(x, y, 54, 40); g.strokeStyle = P.blueD; g.lineWidth = 2; g.strokeRect(x, y, 54, 40); for (let k = 1; k < 5; k++) { g.beginPath(); g.moveTo(x + k * 11, y + 4); g.lineTo(x + k * 11, y + 36); g.stroke(); } });
+  // Fenster
+  [[HX0 + 110, 440], [1450, 440], [HX0 + 110, 630], [1450, 630]].forEach(([x, y]) => { g.fillStyle = 'rgba(68,109,179,.18)'; g.fillRect(x, y, 70, 80); g.strokeStyle = P.blueD; g.lineWidth = 2; g.strokeRect(x, y, 70, 80); g.beginPath(); g.moveTo(x + 35, y); g.lineTo(x + 35, y + 80); g.moveTo(x, y + 40); g.lineTo(x + 70, y + 40); g.stroke(); });
+  // Rohre (Creme / später warm)
+  g.save(); g.strokeStyle = st.warm > .3 ? P.red : 'rgba(47,79,138,.7)'; g.lineWidth = 4; g.setLineDash(st.warm > .3 ? [10, 8] : []); g.lineDashOffset = -t * 40;
+  g.beginPath(); g.moveTo(1240, 930); g.lineTo(1240, GY + 12); g.lineTo(1240, 770); g.lineTo(HX0 + 96, 770); g.moveTo(1240, 770); g.lineTo(1540, 770); g.moveTo(1240, 600); g.lineTo(1240, 560); g.lineTo(HX0 + 96, 560); g.moveTo(1240, 560); g.lineTo(1540, 560); g.moveTo(1240, 770); g.lineTo(1240, 600); g.stroke(); g.restore();
+  // Kessel (fährt heraus) bzw. neuer Speicher
+  const lift = st.lift; if (lift < 1) { g.save(); g.translate(eio(lift) * 40, -eio(lift) * 70); g.globalAlpha = 1 - lin(lift, .15, .6);
+    machineBox(g, 1200, 912, 120, 150, { dotCol: st.flame > 0 ? P.red : '#6d7fa3' }); if (st.flame > 0) { g.save(); g.globalAlpha *= st.flame; starburst(g, 1236, 935, 26, t); g.restore(); } g.restore(); }
+  if (st.tank > 0) { g.save(); g.globalAlpha = st.tank; g.translate(0, (1 - eo(st.tank)) * -120); g.beginPath(); g.ellipse(1440, 912, 50, 66, 0, 0, 7); g.fillStyle = HT; g.fill(); g.fillStyle = P.cream; g.fillRect(1390, 890, 100, 6); g.beginPath(); g.arc(1470, 935, 6, 0, 7); g.fillStyle = P.redL; g.fill(); g.restore(); }
+}
+function garden(g, t, st) {
+  // Luft aus Wörtern: großer Bogen „wärme“ über dem Garten
+  if (st.air > 0) arcBand(g, 560, 1200, 630, 790, Math.PI * 1.04, Math.PI * 1.96, 'wärme', 'rgba(217,96,63,.88)', 14, st.air, t);
+  // Thermometer
+  if (st.therm > 0) { g.save(); g.globalAlpha = st.therm; const x = 380, y = 520; g.beginPath(); g.roundRect(x - 22, y - 180, 44, 250, 22); g.fillStyle = P.cream; g.fill(); g.strokeStyle = P.blueD; g.lineWidth = 3; g.stroke();
+    g.beginPath(); g.arc(x, y + 100, 40, 0, 7); g.fillStyle = HT; g.fill(); g.stroke(); const top = mix(y - 130, y + 20, st.merc || 0); g.fillStyle = HT; g.fillRect(x - 10, top, 20, y + 80 - top);
+    for (let i = 0; i < 8; i++) { g.fillStyle = P.blueD; g.fillRect(x + 22, y - 160 + i * 26, i % 2 ? 10 : 18, 3); } g.restore(); }
+  // Wärmepumpe senkt sich
+  if (st.pump > -1) { const y = mix(-200, 745, eo(clamp(st.pump))); machineBox(g, 820, y, 210, 150, { fan: t, dotCol: P.red }); label(g, t, 820, y - 97, 'wärmewerk', { t0: K.werk - .25, kind: 'cream', size: 26, align: 'center', seed: 48, rot: -.01 }); if (st.pump < 1 && st.pump > 0) { g.save(); g.strokeStyle = 'rgba(47,79,138,.35)'; g.lineWidth = 2; g.setLineDash([4, 8]); g.beginPath(); g.moveTo(820, -100); g.lineTo(820, y - 80); g.stroke(); g.restore(); } }
+  // Leitung Pumpe → Keller (rot gestrichelte Linie zeichnet sich)
+  if (st.pipe > 0) { const pts = [[925, 760], [990, 760], [990, 900], [1100, 900], [1180, 920], [1390, 920]]; stroke(g, pts, P.red, 4, st.pipe, [12, 9], st.warm > 0 ? -t * 40 : 0); }
+}
+
+// ---------- Kamera-Fahrt über das Pergament ----------
+function camAt(t) { const keys = [[0, 1350, 610, 1.32], [K.kessel - .1, 1350, 610, 1.32], [K.dabei - .3, 1350, 610, 1.32], [K.dabei + .15, 640, 560, 1.22], [K.werk - .4, 640, 560, 1.22], [K.werk, 960, 540, 1.0], [K.danach - .4, 960, 540, 1.0], [K.danach + .05, 1360, 600, 1.3], [99, 1360, 600, 1.3]];
+  let i = 0; while (i < keys.length - 1 && t > keys[i + 1][0]) i++; const a = keys[i], b = keys[i + 1], k = eio(lin(t, a[0], b[0])); return [mix(a[1], b[1], k), mix(a[2], b[2], k), mix(a[3], b[3], k)]; }
+function parchScene(g, t) {
+  const [cx, cy, s] = camAt(t), dr = (t - 3.6) * 11; g.save(); g.translate(W / 2, H / 2); g.scale(s, s); g.translate(-cx - dr, -cy + dr * .3);
+  g.drawImage(PARCH, -600, -300);
+  const st = { cold: lin(t, K.kalt - .35, K.kalt), coldRev: lin(t, K.kalt - .35, K.kalt + .1), warm: lin(t, K.warm - .4, K.warm), warmRev: lin(t, K.warm - .45, K.warm + .1),
+    flame: 1 - lin(t, K.aus - .25, K.aus), lift: lin(t, K.drei - .1, K.tagen + .5), tank: lin(t, K.tagen + .3, K.tagen + .6),
+    air: eo(lin(t, K.waerme - .45, K.waerme)), therm: eo(lin(t, K.sogar - .3, K.sogar)), merc: eio(lin(t, K.minus - .3, K.minus)), pump: lin(t, K.werk - .7, K.pumpe), pipe: eo(lin(t, K.tagen - .2, K.antrag - .6)) };
+  if (t < K.werk - .7) st.pump = -2;
+  snow(g, t); garden(g, t, st); diagram(g, t, st);
+  // Etikett „kessel“ mit Führungslinie (Fachbegriff am Objekt), Plakette „25 jahre“ auf der Kesselfront
+  const kt = K.kessel - .25; if (t > kt && t < K.drei) { stroke(g, [[1110, 860], [1030, 780]], 'rgba(47,79,138,.8)', 2, eo(lin(t, kt, kt + .2))); label(g, t, 1000, 770, 'kessel', { t0: kt, kind: 'blue', size: 30, align: 'right', seed: 41, fade: [K.drei - .3, K.drei] }); }
+  if (t > K.alt25 - .25 && t < K.drei + .6) { const lf = st.lift; g.save(); g.translate(eio(lf) * 40, -eio(lf) * 70); g.globalAlpha = 1 - lin(lf, .15, .6); label(g, t, 1200, 885, '25 jahre', { t0: K.alt25 - .25, kind: 'cream', size: 23, align: 'center', rot: -.05, seed: 43 }); g.restore(); }
+  // Ausfall: roter Hand-Kreis um den Kessel, fertig auf „aus“
+  if (t > K.aus - .3) stroke(g, wobEll(1200, 912, 110, 110, 3), P.red, 4, eo(lin(t, K.aus - .3, K.aus)) * (1 - lin(t, K.drei - .3, K.drei)));
+  if (t > K.minus - .25) label(g, t, 450, 640, '−10 °c', { t0: K.minus - .25, kind: 'blue', size: 28, seed: 44, rot: .02 });
+  if (t > K.waerme - .3) stroke(g, wobEll(560, 470, 90, 34, 5), P.red, 3.4, eo(lin(t, K.waerme - .3, K.waerme)));
+  // „3 tage“ an der Leitung, drei rote Häkchen zählen mit
+  if (t > K.drei - .25 && t < K.danach) { const fd = [K.antrag - .5, K.antrag - .2]; label(g, t, 700, 900, '3 tage', { t0: K.drei - .25, kind: 'cream', size: 32, seed: 46, rot: -.015, fade: fd });
+    const a = 1 - lin(t, fd[0], fd[1]); g.save(); g.globalAlpha *= a; for (let i = 0; i < 3; i++) { const t0 = K.drei - .2 + i * .25, x = 885 + i * 36, y = 900, pts = [[x - 11, y], [x - 2, y + 10], [x + 14, y - 13]], q = eo(lin(t, t0, t0 + .18)); stroke(g, pts, P.cream, 9, q); stroke(g, pts, P.red, 4.5, q); } g.restore(); }
+  // Heizkosten-Säule (neben dem Haus): wächst auf „heizkosten“, Schnitt auf „sinken“, −1/3 auf „drittel“
+  costBar(g, t);
+  g.restore();
+  // Halbton-Rahmen bei der Maschine (Einbau)
+  const bk = lin(t, K.werk - .4, K.werk) * (1 - lin(t, K.antrag - .5, K.antrag - .1)); if (bk > 0) { g.save(); g.globalAlpha = bk * .9; g.drawImage(BORDER, 0, 0); g.restore(); }
+  // Förderantrag: Formular (nur Kopfzeile, Blindzeilen) + Stempel 70 %
+  const fa = eo(lin(t, K.antrag - .3, K.antrag)) * (1 - lin(t, K.danach - .4, K.danach - .1)); if (fa > 0) { g.save(); g.globalAlpha = fa; g.translate(mix(-400, 640, fa), 640); g.rotate(-.05);
+    g.shadowColor = 'rgba(40,40,60,.35)'; g.shadowBlur = 14; g.shadowOffsetY = 8; g.fillStyle = '#f4efe2'; g.fillRect(-230, -250, 460, 500); g.shadowColor = 'transparent';
+    g.fillStyle = HT; g.fillRect(-230, -250, 460, 62); fnt(g, 34); g.fillStyle = '#f4eee0'; g.textBaseline = 'middle'; g.fillText('förderantrag', -205, -219);
+    for (let i = 0; i < 4; i++) { g.fillStyle = 'rgba(39,54,95,.55)'; g.fillRect(-200, -150 + i * 44, 110, 4); g.fillStyle = 'rgba(39,54,95,.18)'; g.fillRect(-80, -150 + i * 44, 250 - i * 30, 4); }
+    for (let i = 0; i < 4; i++) { g.fillStyle = 'rgba(39,54,95,.15)'; g.fillRect(-200, 50 + i * 30, 380 - i * 50, 8); }
+    const sp = lin(t, K.siebzig - .12, K.siebzig); if (sp > 0) { g.save(); g.translate(90, 150); g.rotate(-.22); const sc = mix(1.6, 1, eo(sp)); g.scale(sc, sc); g.globalAlpha *= sp; g.strokeStyle = P.red; g.lineWidth = 6; g.beginPath(); g.ellipse(0, 0, 118, 66, 0, 0, 7); g.stroke(); g.lineWidth = 2.5; g.beginPath(); g.ellipse(0, 0, 104, 54, 0, 0, 7); g.stroke();
+      fnt(g, 70); g.fillStyle = P.red; g.textAlign = 'center'; g.fillText('70 %', 0, 4); g.restore(); }
+    g.restore(); }
+}
+// Schnee aus Schreibmaschinen-Sternchen (Januar) – draußen, links und rechts vom Haus
+function snow(g, t) { const a = lin(t, K.januar - .3, K.januar) * (1 - lin(t, K.warm - .6, K.warm)); if (a <= 0) return; const R = rng(77); g.save(); g.globalAlpha = a * .8; fnt(g, 46); g.fillStyle = P.blueD; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let i = 0; i < 70; i++) { const x0 = -300 + R() * 2500, sp = 60 + R() * 50, ph = R() * 900, x = x0 + Math.sin(t * 1.3 + i) * 14, y = 120 + ((t - K.januar + .3) * sp + ph) % 700; if (x > HX0 - 50 && x < HX1 + 50 && y > 200) continue; g.fillText('*', x, y); } g.restore(); }
+function costBar(g, t) { const a0 = K.heizkosten - .3, grow = eo(lin(t, a0, K.heizkosten)), out = 1 - lin(t, K.marke - .9, K.marke - .6); if (grow <= 0 || out <= 0) return;
+  const x = 1760, w = 90, yb = GY, htot = 390, seg = htot / 3, cut = lin(t, K.sinken - .25, K.sinken), fall = lin(t, K.sinken + .1, K.sinken + .8);
+  g.save(); g.globalAlpha = out;
+  // untere zwei Drittel
+  const hNow = htot * grow; g.save(); g.shadowColor = 'rgba(40,40,60,.3)'; g.shadowBlur = 8; g.shadowOffsetX = 5; g.shadowOffsetY = 5; g.fillStyle = HT; g.fillRect(x, yb - Math.min(hNow, seg * 2), w, Math.min(hNow, seg * 2)); g.restore();
+  // oberes Drittel (kippt nach dem Schnitt weg)
+  if (hNow > seg * 2 && fall < 1) { g.save(); g.globalAlpha *= 1 - lin(fall, .5, 1); g.translate(x + w + eio(fall) * 60, yb - seg * 2 + eio(fall) * 120); g.rotate(eio(fall) * .5); g.fillStyle = HT; g.fillRect(-w, -(hNow - seg * 2), w, hNow - seg * 2); g.restore(); }
+  g.strokeStyle = 'rgba(239,231,212,.8)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, yb - seg); g.lineTo(x + w, yb - seg); g.stroke();
+  if (cut > 0) stroke(g, [[x - 40, yb - seg * 2], [x + w + 40, yb - seg * 2]], P.red, 4, cut, [12, 9]);
+  label(g, t, x + w / 2, yb + 40, 'heizkosten', { t0: a0, kind: 'cream', size: 27, align: 'center', seed: 51, rot: .01 });
+  if (t > K.drittel - .25) label(g, t, x + w + 50, yb - seg * 2, '−1/3', { t0: K.drittel - .25, kind: 'cream', col: P.red, size: 30, seed: 52, rot: -.03 });
+  g.restore(); }
+function skyScene(g, t, end) {
+  const u = t - (end ? K.marke - .72 : 0), zs = 1 + .012 * u; g.save(); g.translate(W / 2, H / 2); g.scale(zs, zs); g.translate(-W / 2 + (end ? -1 : 1) * u * 12, -H / 2 + u * 4);
+  g.save(); g.translate(-100, -100); g.drawImage(SKY, 0, 0); g.restore();
+  const col = end ? [240, 150, 70] : [232, 96, 58];
+  if (end) { g.save(); g.globalAlpha = .5; const hx = 960, hy = 470; g.fillStyle = 'rgba(20,32,70,.6)'; g.beginPath(); g.moveTo(hx - 90, hy + 70); g.lineTo(hx - 90, hy - 10); g.lineTo(hx, hy - 80); g.lineTo(hx + 90, hy - 10); g.lineTo(hx + 90, hy + 70); g.closePath(); g.fill(); g.restore(); starburst(g, 960, 470, 34, t, col); }
+  else starburst(g, 960, 350, 30 + 4 * Math.sin(t * 5), t, col);
+  if (!end) {
+    // Gasflamme (Creme-Kontur um den glühenden Punkt)
+    g.save(); g.strokeStyle = 'rgba(239,231,212,.85)'; g.lineWidth = 3; const fx = 960, fy = 330, fl = 1 + .04 * Math.sin(t * 9);
+    g.translate(fx, fy); flamePath(g, 95, fl); g.stroke(); g.lineWidth = 2; g.globalAlpha = .6; g.save(); g.translate(0, 42); flamePath(g, 42, 1 / fl); g.stroke(); g.restore(); g.restore();
+    // Rechnung schiebt sich hoch (fertig auf „Gasrechnung“)
+    const bu = eo(lin(t, K.gas - .35, K.gas)); if (bu > 0) { g.save(); g.translate(960, mix(1300, 700, bu)); g.rotate(-.012);
+      stroke(g, [[0, -175], [0, -300]], 'rgba(217,96,63,.8)', 2, bu, [6, 7]);
+      g.save(); g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowBlur = 18; g.shadowOffsetY = 8; trace(g, jagBill); g.closePath(); g.fillStyle = '#f1e9d6'; g.fill(); g.restore();
+      g.save(); g.translate(-235, -138); g.fillStyle = HT; flamePath(g, 24, 1); g.fill(); g.restore();
+      g.fillStyle = 'rgba(39,54,95,.5)'; g.fillRect(-200, -150, 150, 5); g.fillStyle = 'rgba(39,54,95,.2)'; for (let i = 0; i < 3; i++) g.fillRect(-250, -100 + i * 22, 300 - i * 60, 5);
+      g.fillStyle = 'rgba(39,54,95,.2)'; for (let i = 0; i < 3; i++) g.fillRect(-250, 110 + i * 18, 500 - i * 90, 4);
+      const am = lin(t, K.betrag - .25, K.betrag - .05); if (am > 0) { g.save(); g.globalAlpha *= am; const sc = mix(1.25, 1, eo(am)); g.translate(-75, 30); g.scale(sc, sc); fnt(g, 88); g.fillStyle = P.navyT; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('3.200 €', 0, 0); g.restore(); }
+      if (t > K.jahr - .25) label(g, t, 125, 36, '/jahr', { t0: K.jahr - .25, kind: 'blue', size: 38, align: 'left', seed: 7, rot: .03 });
+      if (t > K.euro - .3) stroke(g, wobEll(-75, 30, 215, 72, 2), P.red, 4, eo(lin(t, K.euro - .3, K.euro)));
+      g.restore(); }
+  } else {
+    label(g, t, 960, 660, 'wärmewerk', { t0: K.marke - .25, size: 76, align: 'center', rot: -.008, seed: 21 });
+    label(g, t, 960, 760, 'haustechnik', { t0: K.marke - .25, size: 40, align: 'center', rot: .01, seed: 22 });
+    label(g, t, 945, 870, 'beratung', { t0: K.beratung - .25, size: 38, align: 'right', rot: -.012, seed: 23 });
+    label(g, t, 975, 872, 'kostenlos', { t0: K.kostenlos - .25, size: 38, align: 'left', rot: .015, seed: 24, circle: [K.kostenlos - .28, 0, 9] });
+    label(g, t, 960, 980, '0711 204 33 90 · waermewerk.de', { t0: K.haustechnik + .45, size: 28, align: 'center', rot: -.006, seed: 25 });
+  }
+  g.restore();
+}
+function frame(t) { const g = X; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1;
+  const inA = eio(lin(t, K.kessel - .55, K.kessel - .15)), outA = eio(lin(t, K.marke - .72, K.marke - .38));
+  if (t < K.kessel - .15) skyScene(g, t, false);
+  else if (t > K.marke - .72) skyScene(g, t, true);
+  // Pergamentbogen schiebt sich über den Himmel (rechts rein) und später nach links hinaus
+  if (inA > 0 && outA < 1) { const x = inA < 1 ? W * (1 - inA) : -W * outA; g.save(); g.translate(x, 0);
+    g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 30; g.fillStyle = P.parch; g.fillRect(0, 0, W, H); g.shadowColor = 'transparent';
+    g.beginPath(); g.rect(0, 0, W, H); g.clip(); parchScene(g, t); g.restore(); }
+  const f = Math.max(1 - lin(t, 0, .12), lin(t, DUR - .45, DUR)); if (f > 0) { g.fillStyle = `rgba(0,0,0,${f})`; g.fillRect(0, 0, W, H); } }
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => { await document.fonts.load('40px CP');
+  SKY = mkSky(); PARCH = mkParch(); HT = mkHT(P.blue, '#6189cc', 11); BORDER = mkBorder(); frame(0); return true; })(), seek(t) { frame(t); } };
+</script>
+</body></html>

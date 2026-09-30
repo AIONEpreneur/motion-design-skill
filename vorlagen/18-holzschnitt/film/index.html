@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Riegel 24 – V7 Holzschnitt</title>
+<style>
+@font-face{font-family:'CB';src:local('Comic Sans MS Bold'),local('ComicSansMS-Bold'),url(Kalam-Bold.ttf)}
+@font-face{font-family:'CL';src:local('Superclarendon Black'),local('Superclarendon-Black'),url(Kalam-Bold.ttf)}
+html,body{margin:0;background:#050505;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Riegel 24 – V5 im Stil von Andy Dieps Holzschnitt-Traum („almost asleep“ / „falling“):
+// tiefschwarzer Grund, gestochene weiße Schnittlinien mit spitzen Enden, die 12×/s „boilen“, massive helle Lichtflächen mit
+// Stanz-Kanten und Kerben, Tapetenmuster (Punkt + Kelch), Zentralperspektive, getippte weiße Etiketten, 7-Segment-Uhr.
+const W = 1920, H = 1080;
+const WH = '#F0ECE4', BK = '#050505', RED = '#D9432F';
+const cv = document.getElementById('c'), X = cv.getContext('2d');
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - x, 3), eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2, es = x => x * x * (3 - 2 * x), ei = x => x * x * x;
+const back = x => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const at = (t, w, d = .32) => eo(lin(t, w - d, w - .02));
+function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function hash(i, s) { let h = Math.imul((i | 0) ^ Math.imul(s | 0, 374761393), 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+function vn(x, s = 0) { const i = Math.floor(x), f = x - i, u = f * f * (3 - 2 * f); return mix(hash(i, s), hash(i + 1, s), u) * 2 - 1; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+let BOIL = 0;   // wechselt 12×/s: alle Schnitte zittern neu
+
+// ---------- Schnittlinie: weißer, spitz auslaufender Stichel-Strich ----------
+function cutPts(g, pts, w, opt = {}) {
+  if (pts.length < 2) return; const col = opt.col || WH, seed = opt.seed || 1, taper = opt.taper ?? .18;
+  // nachrechnen der Länge
+  const L = [0]; for (let i = 1; i < pts.length; i++) L.push(L[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); const len = L[L.length - 1]; if (len < .5) return;
+  const n = Math.max(2, Math.ceil(len / 5)); const q = []; let j = 1;
+  for (let k = 0; k <= n; k++) { const d = k / n * len; while (j < L.length - 1 && L[j] < d) j++; const u = (d - L[j - 1]) / ((L[j] - L[j - 1]) || 1); q.push([mix(pts[j - 1][0], pts[j][0], u), mix(pts[j - 1][1], pts[j][1], u), d]); }
+  const left = [], right = [];
+  for (let k = 0; k < q.length; k++) { const a = q[Math.max(0, k - 1)], b = q[Math.min(q.length - 1, k + 1)], an = Math.atan2(b[1] - a[1], b[0] - a[0]); const u = q[k][2] / len;
+    const tp = Math.min(1, u / taper, (1 - u) / taper); let hw = w / 2 * Math.pow(clamp(tp), .55) * (.78 + .32 * vn(q[k][2] / 23 + BOIL * 3.1, seed)) + .15;
+    const jx = .9 * vn(q[k][2] / 40 + BOIL * 7.7, seed + 5), nx = -Math.sin(an), ny = Math.cos(an);
+    left.push([q[k][0] + nx * (hw + jx), q[k][1] + ny * (hw + jx)]); right.push([q[k][0] - nx * (hw - jx), q[k][1] - ny * (hw - jx)]); }
+  g.fillStyle = col; g.beginPath(); left.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); for (let i = right.length - 1; i >= 0; i--) g.lineTo(right[i][0], right[i][1]); g.closePath(); g.fill();
+}
+function cutL(g, x1, y1, x2, y2, w, opt = {}) { cutPts(g, [[x1, y1], [x2, y2]], w, Object.assign({ seed: ((x1 * 7 + y1 * 13 + x2 * 3) | 0) % 997 }, opt)); }
+function cutRect(g, x, y, w, h, lw, opt = {}) { const o = Object.assign({ taper: .06 }, opt); cutL(g, x, y, x + w, y, lw, o); cutL(g, x + w, y, x + w, y + h, lw, o); cutL(g, x + w, y + h, x, y + h, lw, o); cutL(g, x, y + h, x, y, lw, o); }
+function cutCirc(g, cx, cy, r, lw, a0 = 0, a1 = Math.PI * 2, opt = {}) { const p = []; const n = Math.max(12, Math.ceil(r * Math.abs(a1 - a0) / 6)); for (let i = 0; i <= n; i++) { const a = mix(a0, a1, i / n); p.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } cutPts(g, p, lw, Object.assign({ taper: .04, seed: (r | 0) + 3 }, opt)); }
+// helle Fläche mit Stanz-Kante, Kerben und Maserung (nicht ausgehobenes Holz)
+function slab(g, pts, opt = {}) {
+  const seed = opt.seed || 3, col = opt.col || WH; const e = [];
+  for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / 9)), an = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    for (let k = 0; k < n; k++) { const u = k / n, r = (opt.rough ?? 2.2) * vn(i * 17 + k * .7 + BOIL * .9, seed) + (hash(i * 31 + k, seed + BOIL) < .06 ? -5 : 0); e.push([mix(a[0], b[0], u) - Math.sin(an) * r, mix(a[1], b[1], u) + Math.cos(an) * r]); } }
+  g.save(); g.fillStyle = col; g.beginPath(); e.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill();
+  if (opt.grain !== false) { g.clip(); let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const p of pts) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }
+    const R = rng(seed * 7 + 1), area = (x1 - x0) * (y1 - y0); g.fillStyle = BK;
+    for (let k = 0; k < area / 2600; k++) { const x = mix(x0, x1, R()), y = mix(y0, y1, R()), r = .7 + R() * 1.6; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); }
+    const ang = opt.grainAng ?? 0, nl = Math.ceil((y1 - y0) / 26); for (let k = 0; k < nl * (opt.grainK ?? .5); k++) { const yy = mix(y0, y1, R()), xs = mix(x0, x1, R() * .7), l = (x1 - x0) * (.15 + R() * .35);
+      const p = []; for (let s = 0; s <= 8; s++) { const x = xs + l * s / 8; p.push([x, yy + 3 * Math.sin(x / 60 + k) + (x - xs) * Math.tan(ang)]); } cutPts(g, p, 2.4, { col: BK, seed: k + seed, taper: .4 }); } }
+  g.restore();
+}
+function specks(g, seed, n, alpha = 1, box = [0, 0, W, H]) { const R = rng(seed); g.save(); g.fillStyle = WH; for (let k = 0; k < n; k++) { const x = box[0] + R() * box[2], y = box[1] + R() * box[3], r = R() < .9 ? .8 + R() * .9 : 1.8 + R(); const fl = hash(k, BOIL + seed) < .15 ? .3 : 1;
+  g.globalAlpha = alpha * fl; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } g.restore(); }
+// Tapetenmotiv: Punkt über einem kleinen Kelch
+function motif(g, x, y, s, a = 1) { if (s < .08) return; g.save(); g.globalAlpha = a; g.fillStyle = WH; g.beginPath(); g.arc(x, y - 7 * s, 2.3 * s + .3, 0, 7); g.fill();
+  cutPts(g, [[x - 7 * s, y - 1 * s], [x - 2 * s, y + 5 * s], [x, y + 2 * s]], 2.4 * s + .5, { seed: 11, taper: .35 }); cutPts(g, [[x + 7 * s, y - 1 * s], [x + 2 * s, y + 5 * s], [x, y + 2 * s]], 2.4 * s + .5, { seed: 12, taper: .35 }); g.restore(); }
+
+// ---------- Zentralperspektive ----------
+const CAM = { x: 0, y: 0, z: 0, roll: 0, F: 900, cx: W / 2, cy: H / 2 };
+function P3(x, y, z) { const dz = z - CAM.z; if (dz < .04) return null; const X0 = (x - CAM.x) * CAM.F / dz, Y0 = (y - CAM.y) * CAM.F / dz, c = Math.cos(CAM.roll), s = Math.sin(CAM.roll); return [CAM.cx + X0 * c - Y0 * s, CAM.cy + X0 * s + Y0 * c, CAM.F / dz]; }
+function L3(g, a, b, w = 3, opt) { let A = a.slice(), B = b.slice(); const zn = CAM.z + .06; if (A[2] < zn && B[2] < zn) return; if (A[2] < zn) { const k = (zn - A[2]) / (B[2] - A[2]); A = [mix(A[0], B[0], k), mix(A[1], B[1], k), zn]; } if (B[2] < zn) { const k = (zn - B[2]) / (A[2] - B[2]); B = [mix(B[0], A[0], k), mix(B[1], A[1], k), zn]; }
+  const p = P3(...A), q = P3(...B); if (!p || !q) return; const sc = Math.sqrt((p[2] + q[2]) / 2 / 300); cutL(g, p[0], p[1], q[0], q[1], clamp(w * 1.8 * sc, 1.6, w * 3), opt); }
+function poly3(g, pts, opt) { const q = pts.map(p => P3(...p)); if (q.some(p => !p)) return; slab(g, q.map(p => [p[0], p[1]]), opt); }
+
+// ---------- Figuren: schwarze Silhouette mit weißer Schnittkante ----------
+function figure(g, x, y, s, pose, opt = {}) {
+  // pose: {rot, la:[a1,a2], ra, ll, rl} Winkel in Radiant (0 = nach unten)
+  g.save(); g.translate(x, y); g.rotate(pose.rot || 0); g.scale(s, s);
+  const limb = (x0, y0, a1, l1, a2, l2) => { const xm = x0 + Math.sin(a1) * l1, ym = y0 + Math.cos(a1) * l1; return [[x0, y0], [xm, ym], [xm + Math.sin(a2) * l2, ym + Math.cos(a2) * l2]]; };
+  const parts = [limb(-16, -62, pose.la[0], 34, pose.la[1], 32), limb(16, -62, pose.ra[0], 34, pose.ra[1], 32), limb(-8, 0, pose.ll[0], 40, pose.ll[1], 40), limb(8, 0, pose.rl[0], 40, pose.rl[1], 40)];
+  const draw = (col, add) => { g.strokeStyle = col; g.fillStyle = col; g.lineCap = g.lineJoin = 'round';
+    g.lineWidth = 16 + add; for (const p of parts) { g.beginPath(); g.moveTo(p[0][0], p[0][1]); g.lineTo(p[1][0], p[1][1]); g.lineTo(p[2][0], p[2][1]); g.stroke(); }
+    g.lineWidth = 34 + add; g.beginPath(); g.moveTo(0, -60); g.lineTo(0, -6); g.stroke(); g.lineWidth = 16 + add; g.beginPath(); g.moveTo(-14, -64); g.lineTo(14, -64); g.stroke();
+    g.beginPath(); g.arc(0, -92, 17 + add / 2, 0, 7); g.fill();
+    if (opt.cap) { g.beginPath(); g.moveTo(-19 - add / 2, -98); g.quadraticCurveTo(0, -126 - add / 2, 19 + add / 2, -98); g.lineTo(30 + add / 2, -96); g.closePath(); g.fill(); }
+    if (opt.box) { g.fillRect(24 - add / 2, -8 - add / 2, 40 + add, 26 + add); } };
+  draw(WH, 10); draw(BK, 0);
+  if (opt.box) { g.fillStyle = WH; g.fillRect(34, -2, 20, 3); }
+  g.restore();
+}
+
+// ---------- 7-Segment-Anzeige (Uhr / Nummer) ----------
+const SEG = { '0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc', '5': 'afgcd', '6': 'afgedc', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg', '-': 'g', ' ': '' };
+function seg7(g, s, x, y, h, col = WH, lw = null) { const w = h * .56, t = lw || h * .13, e = t * .55; let cx = x;
+  for (const ch of s) { if (ch === ':') { g.fillStyle = col; g.beginPath(); g.arc(cx + w * .2, y + h * .3, t * .55, 0, 7); g.arc(cx + w * .2, y + h * .72, t * .55, 0, 7); g.fill(); cx += w * .45; continue; }
+    const on = SEG[ch] || ''; const S = { a: [[cx + e, y], [cx + w - e, y]], b: [[cx + w, y + e], [cx + w, y + h / 2 - e]], c: [[cx + w, y + h / 2 + e], [cx + w, y + h - e]], d: [[cx + e, y + h], [cx + w - e, y + h]], e: [[cx, y + h / 2 + e], [cx, y + h - e]], f: [[cx, y + e], [cx, y + h / 2 - e]], g: [[cx + e, y + h / 2], [cx + w - e, y + h / 2]] };
+    for (const k of on) cutPts(g, S[k], t, { col, taper: .12, seed: k.charCodeAt(0) + (cx | 0) });
+    cx += w + h * .24; } return cx - x; }
+function seg7W(s, h) { let w = 0; for (const ch of s) w += ch === ':' ? h * .56 * .45 : h * .56 + h * .24; return w; }
+function clockBox(g, x, y, s, str, a = 1) { if (a <= 0) return; g.save(); g.globalAlpha = a; const h = 70 * s, w = seg7W(str, h) + 60 * s, bh = h + 56 * s; g.fillStyle = BK; g.fillRect(x - 12 * s, y - 12 * s, w + 24 * s, bh + 24 * s);
+  cutRect(g, x - 10 * s, y - 10 * s, w + 20 * s, bh + 20 * s, 5 * s); cutRect(g, x + 4 * s, y + 4 * s, w - 8 * s, bh - 8 * s, 2.6 * s); seg7(g, str, x + 30 * s, y + 28 * s, h); g.restore(); }
+
+// ---------- Objekt-Zettel (V7): weißer Zettel wie das Etikett im Original, aber am Objekt, mit Führungslinie, als Ganzes ----------
+function tag(g, t, w, txt, x, y, px, py) { const a = at(t, w, .25); if (a <= 0) return; g.save(); g.globalAlpha = a; g.font = '62px CB'; const tw = g.measureText(txt).width, bw = tw + 52, h = 94;
+  cutL(g, px, py, x + bw / 2, y + h / 2, 3); slab(g, [[x, y], [x + bw, y], [x + bw, y + h], [x, y + h]], { seed: 170, grain: false, rough: 1.2 });
+  g.fillStyle = BK; g.textBaseline = 'alphabetic'; g.fillText(txt, x + 26, y + 68); g.beginPath(); g.fillStyle = WH; g.arc(px, py, 7, 0, 7); g.fill(); g.restore(); }
+// ---------- Szene A/E/G: Treppenhaus in Zentralperspektive ----------
+const RM = { x0: -2, x1: 2, top: -1.55, fl: 1.35, back: 3.6 };
+const DOOR = { x0: -.62, x1: .62, top: -.95 };
+function room(g, t, st) {
+  // st: {light, doorOpen(0..1), moon}
+  const { x0, x1, top, fl, back: zb } = RM, zn = CAM.z + .06;
+  // Innenraum hinter der Tür (hell) zuerst
+  if (st.doorOpen > 0) { poly3(g, [[DOOR.x0, DOOR.top, zb], [DOOR.x1, DOOR.top, zb], [DOOR.x1, fl, zb], [DOOR.x0, fl, zb]], { seed: 91, grainK: .2 }); }
+  // Kanten des Raums
+  L3(g, [x0, top, zb], [x1, top, zb], 3.6); L3(g, [x0, fl, zb], [x1, fl, zb], 3.6); L3(g, [x0, top, zb], [x0, fl, zb], 3.6); L3(g, [x1, top, zb], [x1, fl, zb], 3.6);
+  for (const [x, y] of [[x0, top], [x1, top], [x0, fl], [x1, fl]]) L3(g, [x, y, zn], [x, y, zb], 3.4);
+  // Boden: Dielen in die Tiefe + Querfugen
+  for (let x = x0 + .5; x < x1; x += .5) L3(g, [x, fl, zn], [x, fl, zb], 2.4);
+  for (let z = zb - .55; z > zn; z -= .55) L3(g, [x0, fl, z], [x1, fl, z], 2.2);
+  // Tapete auf Rückwand und Seitenwänden
+  const pat = (pts) => { for (const p of pts) { const q = P3(...p); if (q) motif(g, q[0], q[1], q[2] / 300 * 1.7, .95); } };
+  const pw = []; for (let x = x0 + .18; x < x1; x += .3) for (let y = top + .2; y < fl - .25; y += .3) { if (x > DOOR.x0 - .15 && x < DOOR.x1 + .15 && y > DOOR.top - .15) continue; if (x > -2 && x < -.75 && y > -1.45 && y < 0) continue; pw.push([x + (Math.round((y - top) / .3) % 2 ? .15 : 0), y, zb]); } pat(pw);
+  const sw = []; for (let z = zb - .25; z > zn + .1; z -= .34) for (let y = top + .2; y < fl - .25; y += .3) { sw.push([x0, y, z], [x1, y, z]); } pat(sw);
+  // Fenster in der Rückwand mit Mond
+  { const xa = -1.85, xb = -.85, ya = -1.32, yb = -.08; poly3(g, [[xa, ya, zb], [xb, ya, zb], [xb, yb, zb], [xa, yb, zb]], { seed: 21, grainK: .9 });
+    const c1 = P3(xa, (ya + yb) / 2, zb), c2 = P3(xb, (ya + yb) / 2, zb), d1 = P3((xa + xb) / 2, ya, zb), d2 = P3((xa + xb) / 2, yb, zb);
+    if (c1 && c2) { cutL(g, c1[0], c1[1], c2[0], c2[1], 6, { col: BK }); cutL(g, d1[0], d1[1], d2[0], d2[1], 6, { col: BK }); const m = P3(xa + .52, ya + .22, zb); if (m) { const sc = m[2] / 300; g.save(); g.strokeStyle = BK; g.lineWidth = 2.6; g.beginPath(); g.arc(m[0], m[1], 26 * sc, 0, 7); g.stroke(); g.fillStyle = BK; for (const [dx, dy] of [[-7, -6], [6, 3], [-2, 11]]) { g.beginPath(); g.arc(m[0] + dx * sc, m[1] + dy * sc, 3 * sc, 0, 7); g.fill(); } g.restore(); } } }
+  // Mondlicht-Fläche auf dem Boden mit Fensterkreuz
+  if (st.moon > 0) { g.save(); g.globalAlpha = st.moon; const pz = [[-1.85, fl, .5], [-.75, fl, .5], [-.95, fl, 1.7], [-1.95, fl, 1.7]]; poly3(g, pz, { seed: 31, grainK: .3 });
+    const a = P3(-1.33, fl, .5), b = P3(-1.43, fl, 1.7), c = P3(-1.88, fl, 1.1), d = P3(-.85, fl, 1.1); if (a && b) { cutL(g, a[0], a[1], b[0], b[1], 8, { col: BK }); cutL(g, c[0], c[1], d[0], d[1], 7, { col: BK }); } g.restore(); }
+  // Deckenlampe und ihr Lichtkegel auf dem Boden
+  { const lz = 2.3, p = P3(0, top, lz), q = P3(0, top + .35, lz); if (p && q) { cutL(g, p[0], p[1], q[0], q[1], 2.5); const r = 60 * q[2] / 300; slab(g, [[q[0] - r * .35, q[1]], [q[0] + r * .35, q[1]], [q[0] + r, q[1] + r * .55], [q[0] - r, q[1] + r * .55]], { seed: 41, grain: false }); } }
+  if (st.light > 0) { g.save(); g.globalAlpha = st.light; poly3(g, [[-.55, fl, 2.9], [.55, fl, 2.9], [1.0, fl, 1.5], [-1.0, fl, 1.5]], { seed: 51, grainK: .25 }); g.restore(); }
+  // Tür
+  { const f = [[DOOR.x0 - .1, DOOR.top - .1, zb], [DOOR.x1 + .1, DOOR.top - .1, zb], [DOOR.x1 + .1, fl, zb], [DOOR.x0 - .1, fl, zb]]; for (let i = 0; i < 3; i++) L3(g, f[i], f[i + 1], 3.2);
+    const op = st.doorOpen; // Türblatt dreht nach innen: sichtbare Breite schrumpft
+    const xR = mix(DOOR.x1, DOOR.x0 + .1, op), zR = zb + op * .9; const leaf = [[DOOR.x0, DOOR.top, zb], [xR, DOOR.top, zR], [xR, fl, zR], [DOOR.x0, fl, zb]];
+    const q = leaf.map(p => P3(...p)); if (q.every(Boolean)) { g.save(); g.fillStyle = BK; g.beginPath(); q.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.restore();
+      for (let i = 0; i < 4; i++) cutL(g, q[i][0], q[i][1], q[(i + 1) % 4][0], q[(i + 1) % 4][1], 6.5);
+      const ip = (u, v) => [mix(mix(q[0][0], q[1][0], u), mix(q[3][0], q[2][0], u), v), mix(mix(q[0][1], q[1][1], u), mix(q[3][1], q[2][1], u), v)];
+      for (const [u0, u1, v0, v1] of [[.14, .46, .08, .44], [.54, .86, .08, .44], [.14, .46, .54, .92], [.54, .86, .54, .92]]) { const r = [ip(u0, v0), ip(u1, v0), ip(u1, v1), ip(u0, v1)]; for (let i = 0; i < 4; i++) cutL(g, r[i][0], r[i][1], r[(i + 1) % 4][0], r[(i + 1) % 4][1], 4.2); }
+      const kn = ip(.86, .5); g.fillStyle = WH; g.beginPath(); g.arc(kn[0], kn[1], 7 * (1 - op * .5), 0, 7); g.fill(); const kh = ip(.86, .56); g.fillRect(kh[0] - 2, kh[1], 4, 10); } }
+}
+function roomCam(t, z, dx = 0) { CAM.x = dx + .04 * Math.sin(t * .7); CAM.y = -.05 + .02 * Math.sin(t * .9); CAM.z = z; CAM.roll = .006 * Math.sin(t * .8); CAM.F = 900; CAM.cx = W / 2; CAM.cy = H / 2; }
+
+// ---------- Handy ----------
+function phoneBody(g, cx, cy, s, rot = 0) { g.save(); g.translate(cx, cy); g.rotate(rot); g.scale(s, s); const w = 460, h = 880;
+  g.fillStyle = BK; g.beginPath(); g.roundRect(-w / 2, -h / 2, w, h, 56); g.fill(); g.restore();
+  const p = (x, y) => [cx + (x * Math.cos(rot) - y * Math.sin(rot)) * s, cy + (x * Math.sin(rot) + y * Math.cos(rot)) * s];
+  const outline = []; const r = 56, w2 = 230, h2 = 440; for (let i = 0; i <= 64; i++) { const u = i / 64 * 4; const side = Math.floor(u), f = u - side; let x, y;
+    if (side === 0) { x = mix(-w2 + r, w2 - r, f); y = -h2; } else if (side === 1) { x = w2; y = mix(-h2 + r, h2 - r, f); } else if (side === 2) { x = mix(w2 - r, -w2 + r, f); y = h2; } else { x = -w2; y = mix(h2 - r, -h2 + r, f); } outline.push(p(x, y)); }
+  outline.push(outline[0]); cutPts(g, outline, 6 * s + 1, { taper: .01, seed: 5 }); const inner = outline.map(q => [cx + (q[0] - cx) * .93, cy + (q[1] - cy) * .955]); cutPts(g, inner, 2.4 * s + .6, { taper: .01, seed: 6 }); return p; }
+
+// ---------- Szene C: endloser Flur ----------
+function corridor(g, t) {
+  const tt = t - K.preis - .32; const zc = 1.6 * tt + .95 * tt * tt; CAM.x = .05 * Math.sin(t * 1.3); CAM.y = .04 * Math.sin(t * 1.1); CAM.z = zc; CAM.F = 820; CAM.cx = W / 2; CAM.cy = H / 2;
+  CAM.roll = .04 * Math.sin(t * .9) + 1.1 * ei(lin(t, K.p100 + .05, K.riegel - .19));
+  const bx = 1.8, by = 1.1, D = 1.5, k0 = Math.floor(zc / D);
+  // Licht am Fluchtpunkt
+  const vp = P3(0, 0, zc + 60); g.save(); const rg = g.createRadialGradient(vp[0], vp[1], 0, vp[0], vp[1], 120); rg.addColorStop(0, 'rgba(240,236,228,1)'); rg.addColorStop(.35, 'rgba(240,236,228,.9)'); rg.addColorStop(1, 'rgba(240,236,228,0)'); g.fillStyle = rg; g.fillRect(vp[0] - 130, vp[1] - 130, 260, 260); g.restore();
+  for (let r = 0; r < 14; r++) { const an = r / 14 * Math.PI * 2 + BOIL * .2, l0 = 30, l1 = 70 + 40 * hash(r, BOIL); cutL(g, vp[0] + Math.cos(an) * l0, vp[1] + Math.sin(an) * l0, vp[0] + Math.cos(an) * l1, vp[1] + Math.sin(an) * l1, 2.2); }
+  for (let k = k0 + 24; k >= k0; k--) { const z = k * D; if (z < zc + .05) continue;
+    const c = [[-bx, -by, z], [bx, -by, z], [bx, by, z], [-bx, by, z]]; for (let i = 0; i < 4; i++) L3(g, c[i], c[(i + 1) % 4], 3.2);
+    for (let i = 0; i < 4; i++) L3(g, c[i], [c[i][0], c[i][1], z - D], 3);
+    // Tapete auf allen vier Wänden
+    const R = rng(k * 13 + 7); const pts = [];
+    for (let s = 0; s < 3; s++) { const zz = z - D * (s + .5) / 3; for (let v = -.75; v <= .75; v += .5) { pts.push([-bx, v * by + .12 * (s % 2), zz], [bx, v * by - .12 * (s % 2), zz]); } for (let u = -.8; u <= .8; u += .4) pts.push([u * bx + .1 * (s % 2), -by, zz], [u * bx - .1 * (s % 2), by, zz]); }
+    for (const p of pts) { const q = P3(...p); if (q) motif(g, q[0], q[1], q[2] / 300 * 1.4, clamp(q[2] / 25)); }
+    // Fenster, Uhren, Rahmen, Bodenlicht
+    const kind = k % 5, side = k % 2 ? -1 : 1, zm = z - D * .5;
+    if (kind === 0 || kind === 3 || kind === 2) { const yA = -.55, yB = .35, zA = zm - .35, zB = zm + .35; poly3(g, [[side * bx, yA, zA], [side * bx, yA, zB], [side * bx, yB, zB], [side * bx, yB, zA]], { seed: k, grainK: .6 });
+      const a = P3(side * bx, (yA + yB) / 2, zA), b = P3(side * bx, (yA + yB) / 2, zB), c2 = P3(side * bx, yA, zm), d = P3(side * bx, yB, zm); if (a && b && c2 && d) { cutL(g, a[0], a[1], b[0], b[1], 5 * a[2] / 300 + 1, { col: BK }); cutL(g, c2[0], c2[1], d[0], d[1], 5 * a[2] / 300 + 1, { col: BK }); } }
+    if (kind === 1) { const q = [P3(-side * bx, -.35, zm - .5), P3(-side * bx, -.35, zm + .1), P3(-side * bx, .15, zm - .5)]; if (q.every(Boolean)) { g.save(); const ux = (q[1][0] - q[0][0]) / 300, uy = (q[1][1] - q[0][1]) / 300, vx = (q[2][0] - q[0][0]) / 150, vy = (q[2][1] - q[0][1]) / 150; g.transform(ux, uy, vx, vy, q[0][0], q[0][1]); cutRect(g, 0, 0, 300, 150, 7); seg7(g, '23:52', 30, 30, 90, WH, 11); g.restore(); } }
+    if (kind === 2) { const pts2 = [[-.5, -by, zm - .4], [.5, -by, zm - .4], [.5, -by, zm + .3], [-.5, -by, zm + .3]]; poly3(g, pts2, { seed: k + 3, grainK: .4 }); }
+    if (kind === 4) { const pts2 = [[-.8, by, zm - .3], [.2, by, zm - .3], [.2, by, zm + .3], [-.8, by, zm + .3]]; poly3(g, pts2, { seed: k + 5, grainK: .4 }); }
+  }
+}
+function priceTag(g, t, w, txt, dir, col) {
+  const k = lin(t, w - .5, w - .02); if (k <= 0) return; const after = Math.max(0, t - w); if (after > .7) return;
+  const s = (.06 + .94 * es(k)) * Math.exp(after * 2.2); const ox = W / 2 + dir[0] * 360 * s * (1 + after * 1.5), oy = H / 2 + dir[1] * 170 * s * (1 + after * 1.5);
+  g.save(); g.translate(ox, oy); g.rotate(dir[0] * .08 + Math.sin(t * 3) * .03); g.scale(s, s); const w0 = 420, h0 = 210;
+  slab(g, [[-w0 / 2 + 60, -h0 / 2], [w0 / 2, -h0 / 2], [w0 / 2, h0 / 2], [-w0 / 2 + 60, h0 / 2], [-w0 / 2, 30], [-w0 / 2, -30]], { seed: 80 + txt.length, grainK: .15 });
+  g.fillStyle = BK; g.beginPath(); g.arc(-w0 / 2 + 36, 0, 12, 0, 7); g.fill(); cutPts(g, [[-w0 / 2 + 36, 0], [-w0 / 2 - 40, -60], [-w0 / 2 - 120, -40]], 3, { seed: 3 });
+  g.font = '120px CB'; g.textAlign = 'center'; g.fillStyle = col; g.fillText(txt, 30, 44); g.restore();
+}
+
+// ---------- Szene F: Schloss im Schnitt ----------
+function lockSection(g, t) {
+  const z = 1 + .05 * lin(t, K.oeffnet - .31, K.klick + .32), ox = W / 2, oy = H / 2; g.save(); g.translate(ox, oy); g.scale(z, z); g.translate(-ox, -oy);
+  // Türblatt (links) und Zarge (rechts): Holz mit Maserung aus Schnittlinien
+  const grain = (x0, x1, seed) => { for (let x = x0 + 10; x < x1 - 4; x += 15) { const p = []; for (let y = -40; y <= H + 40; y += 20) p.push([x + 7 * Math.sin(y / 90 + x * .05) + 4 * vn(y / 60, seed + x), y]); cutPts(g, p, 1.8, { seed: seed + x, taper: .02 }); }
+    const R = rng(seed); for (let k = 0; k < 3; k++) { const cx = mix(x0 + 40, x1 - 40, R()), cy = 150 + R() * 780; for (let r = 8; r < 44; r += 9) { g.save(); g.fillStyle = BK; g.beginPath(); g.ellipse(cx, cy, r * .55 + 3, r * 1.6 + 3, 0, 0, 7); g.fill(); g.restore(); cutCirc(g, cx, cy, r, 1.8, 0, Math.PI * 2, { seed: r }); } } };
+  grain(260, 900, 3); cutL(g, 900, -20, 900, H + 20, 6); grain(1010, 1640, 9); cutL(g, 1010, -20, 1010, H + 20, 6);
+  // Schlossfalle: fährt bei „Folie“ zurück, bei „Klick“ ganz drin
+  const back2 = 150 * es(lin(t, K.folie + .05, K.klick - .06)), fy = 540, fx = 900 - back2;
+  g.fillStyle = BK; g.fillRect(1010, fy - 70, 120, 140); cutRect(g, 1010, fy - 70, 120, 140, 3.4); // Schließblech-Loch
+  g.fillStyle = BK; g.fillRect(700, fy - 90, 200, 180); cutRect(g, 700, fy - 90, 200, 180, 3.4);  // Schlosskasten
+  slab(g, [[fx - 200, fy - 46], [fx + 150, fy - 46], [fx + 230, fy + 46], [fx - 200, fy + 46]], { seed: 61, grainK: .5 });
+  // Feder
+  const sp = []; for (let i = 0; i <= 40; i++) { const x = mix(720, fx - 200 + 190, i / 40); sp.push([x, fy + 40 * Math.sin(i / 40 * Math.PI * 10) * .45]); } g.save(); g.beginPath(); g.rect(700, fy - 90, 200, 180); g.clip(); cutPts(g, sp, 2.4, { seed: 2 }); g.restore();
+  // Folie: dünnes helles Blatt von unten durch den Spalt
+  const fk = es(lin(t, K.folie - .32, K.folie - .02)); if (fk > 0) { const tip = mix(H + 60, fy + 30, fk) - 40 * es(lin(t, K.folie, K.klick)); const p = [[955 - 30 * es(lin(t, K.folie, K.klick)), tip], [960, tip + 200], [975, H + 60]];
+    cutPts(g, [p[0], [p[0][0] + 4, p[0][1] + 100], p[1], p[2]], 9, { seed: 13, taper: .03 });
+    for (let k = 0; k < 5; k++) cutL(g, 955 + 20, tip + 60 + k * 50, 985 + 20, tip + 70 + k * 50, 1.5, { col: BK });
+    g.save(); g.fillStyle = BK; g.fillRect(1140, 752, 230, 110); g.restore(); tag(g, t, K.folie, 'Folie', 1150, 760, 972, tip + 230); }
+  // Klick-Strahlen
+  const kk = lin(t, K.klick - .1, K.klick + .35); if (kk > 0 && kk < 1) for (let r = 0; r < 12; r++) { const an = r / 12 * Math.PI * 2, l0 = 120 + 80 * eo(kk), l1 = l0 + 90 * (1 - kk); cutL(g, 960 + Math.cos(an) * l0, fy + Math.sin(an) * l0, 960 + Math.cos(an) * l1, fy + Math.sin(an) * l1, 6 * (1 - kk) + 1); }
+  g.restore();
+  // Bohrmaschine + rotes Kreuz
+  const da = at(t, K.ohne, .3); if (da > 0) { g.save(); g.translate(1560, 300); g.scale(.95, .95); g.rotate(-.12); g.globalAlpha = 1; g.fillStyle = BK; g.fillRect(-190, -80, 400, 330);
+    slab(g, [[-170, -70], [80, -70], [110, -40], [110, 30], [-170, 30], [-190, -20]], { seed: 71, grainK: .3 }); slab(g, [[-110, 30], [-40, 30], [-60, 170], [-130, 170]], { seed: 72, grainK: .3 }); slab(g, [[-160, 170], [-25, 170], [-25, 225], [-160, 225]], { seed: 74, grainK: .3 });
+    slab(g, [[110, -35], [160, -30], [160, 20], [110, 25]], { seed: 73, grain: false }); const bit = []; for (let i = 0; i <= 12; i++) bit.push([160 + i * 12, -5 + (i % 2 ? 7 : -7)]); cutPts(g, bit, 5, { seed: 4 });
+    const x1 = es(lin(t, K.ohne - .02, K.ohne + .12)), x2 = es(lin(t, K.ohne + .1, K.bohren - .02)); if (x1 > 0) cutPts(g, [[-170, -110], [mix(-170, 260, x1), mix(-110, 240, x1)]], 26, { col: RED, seed: 8, taper: .08 }); if (x2 > 0) cutPts(g, [[260, -110], [mix(260, -170, x2), mix(-110, 240, x2)]], 26, { col: RED, seed: 9, taper: .08 });
+    g.restore(); }
+}
+
+// ---------- Logo ----------
+function keyShape(g, x, y, s, rot) { g.save(); g.translate(x, y); g.rotate(rot); g.scale(s, s);
+  // Reide (Ring), Halm, Bart
+  g.fillStyle = WH; g.beginPath(); g.arc(0, 0, 90, 0, 7); g.fill(); g.fillStyle = BK; g.beginPath(); g.arc(0, 0, 44, 0, 7); g.fill();
+  for (let k = 0; k < 6; k++) { const an = k / 6 * Math.PI * 2 + .3; g.beginPath(); g.arc(Math.cos(an) * 68, Math.sin(an) * 68, 7, 0, 7); g.fill(); }
+  slab(g, [[-16, 80], [16, 80], [16, 420], [-16, 420]], { seed: 44, grainK: .8, rough: 1.4 });
+  slab(g, [[16, 330], [80, 330], [80, 350], [58, 350], [58, 372], [80, 372], [80, 400], [16, 420]], { seed: 45, grainK: .4, rough: 1.2 });
+  cutCirc(g, 0, 0, 102, 3.2); g.restore(); }
+function carved(g, s, x, y, size, a = 1, col = WH) { g.save(); g.globalAlpha = a; g.font = `${size}px CL`; g.textAlign = 'center'; g.fillStyle = col; g.fillText(s, x, y);
+  // Kerben und Poren im Holzbuchstaben
+  const w = g.measureText(s).width; g.globalCompositeOperation = 'source-atop'; const R = rng(s.length * 31); g.fillStyle = BK;
+  for (let k = 0; k < w * size / 900; k++) { const px = x - w / 2 + R() * w, py = y - size * .75 + R() * size * .8; g.beginPath(); g.arc(px, py, .8 + R() * 1.8, 0, 7); g.fill(); }
+  for (let k = 0; k < 7; k++) { const py = y - size * .7 + R() * size * .7, px = x - w / 2 + R() * w * .8; cutPts(g, [[px, py], [px + 40 + R() * 90, py + 3 * vn(k, 3)]], 2.2, { col: BK, seed: k }); }
+  g.restore(); }
+function sun(g, x, y, r, a) { if (a <= 0) return; g.save(); g.globalAlpha = a; g.translate(x, y); g.rotate(BOIL * .02); slab(g, Array.from({ length: 24 }, (_, i) => [Math.cos(i / 24 * 6.283) * r * .55, Math.sin(i / 24 * 6.283) * r * .55]), { seed: 81, grainK: .5 });
+  for (let k = 0; k < 16; k++) { const an = k / 16 * Math.PI * 2; cutL(g, Math.cos(an) * r * .7, Math.sin(an) * r * .7, Math.cos(an) * r * (k % 2 ? .95 : 1.12), Math.sin(an) * r * (k % 2 ? .95 : 1.12), 7); } g.restore(); }
+function moon(g, x, y, r, a) { if (a <= 0) return; g.save(); g.globalAlpha = a; g.translate(x, y); const pts = []; for (let i = 0; i <= 24; i++) { const an = -Math.PI / 2 + i / 24 * Math.PI; pts.push([Math.cos(an) * r, Math.sin(an) * r]); }
+  for (let i = 24; i >= 0; i--) { const an = -Math.PI / 2 + i / 24 * Math.PI; pts.push([Math.cos(an) * r * .35, Math.sin(an) * r]); } slab(g, pts.map(p => [p[0] - r * .2, p[1]]), { seed: 82, grainK: .6 });
+  g.fillStyle = BK; for (const [dx, dy, rr] of [[.35, -.4, .08], [.55, .1, .06], [.3, .45, .07]]) { g.beginPath(); g.arc(dx * r - r * .2, dy * r, rr * r, 0, 7); g.fill(); } g.restore(); }
+
+// ---------- Holzmaserung im Schwarz ----------
+let GRAIN;
+function buildGrain() { GRAIN = mk(W, H); const g = GRAIN.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, W, H); const R = rng(9); g.lineCap = 'round';
+  for (let k = 0; k < 260; k++) { const y0 = R() * H, amp = 6 + R() * 18, fr = 200 + R() * 500, ph = R() * 6; g.strokeStyle = `rgba(255,250,240,${.018 + R() * .03})`; g.lineWidth = .8 + R() * 2.2; g.beginPath();
+    for (let x = -20; x <= W + 20; x += 16) g.lineTo(x, y0 + amp * Math.sin(x / fr + ph) + 10 * vn(x / 300 + k, 4)); g.stroke(); }
+  for (let k = 0; k < 7; k++) { const cx = R() * W, cy = R() * H; for (let r = 10; r < 90; r += 8) { g.strokeStyle = 'rgba(255,250,240,.03)'; g.lineWidth = 1.2; g.beginPath(); g.ellipse(cx, cy, r * 2.4, r * .6, 0, 0, 7); g.stroke(); } } }
+
+// ---------- Bild ----------
+let SHARDS = null;
+function scenePhone(g, t, s, cx, cy) {
+  // Suche nach „Schlüsselnotdienst“, drei Treffer mit anderen Preisen
+  const p = phoneBody(g, cx, cy, s);
+  const L = (x, y) => p(x, y);
+  // Suchfeld
+  const sb = [L(-190, -360), L(190, -360), L(190, -290), L(-190, -290)]; slab(g, sb, { seed: 90, grain: false, rough: 1 });
+  const q = 'Schlüsselnotdienst', qa = at(t, K.notdienst, .25); g.save(); g.globalAlpha *= qa; g.font = `${36 * s}px CB`; g.fillStyle = BK; const tp = L(-170, -313); g.fillText(q, tp[0], tp[1]); g.restore();
+  // Tastatur, solange getippt wird
+  const kb = 1 - lin(t, K.jeder - .4, K.jeder - .1); if (kb > 0) { g.save(); g.globalAlpha = kb; for (let r = 0; r < 4; r++) for (let c = 0; c < (r === 3 ? 5 : 10 - r); c++) { const kw = r === 3 && c === 2 ? 150 : 34, x = -185 + c * 38 + r * 18 + (r === 3 && c > 2 ? 116 : 0), y = 90 + r * 62; const a = L(x, y), b = L(x + kw, y + 48);
+      const hit = false; if (hit) slab(g, [a, [b[0], a[1]], b, [a[0], b[1]]], { seed: c, grain: false, rough: .6 }); else cutRect(g, a[0], a[1], b[0] - a[0], b[1] - a[1], 2); } g.restore(); }
+  const mg = L(150, -326); cutCirc(g, mg[0], mg[1], 12 * s, 3); cutL(g, mg[0] + 9 * s, mg[1] + 9 * s, mg[0] + 20 * s, mg[1] + 20 * s, 4);
+  // Treffer
+  const rows = [['', '49 €?', K.jeder - .02], ['', '?? €', K.jeder + .45], ['', '9 €*', K.anderen - .02]];
+  rows.forEach((r, i) => { const a = at(t, r[2], .28); if (a <= 0) return; const y = -220 + i * 190; g.save(); g.globalAlpha = a; const tl = L(-190, y), br = L(190, y + 160);
+    cutRect(g, tl[0], tl[1] + (1 - a) * 20, br[0] - tl[0], br[1] - tl[1], 3); cutL(g, tl[0] + 20 * s, tl[1] + 40 * s, tl[0] + 230 * s, tl[1] + 40 * s, 6);
+    for (let k = 0; k < 2; k++) cutL(g, tl[0] + 20 * s, tl[1] + (74 + k * 22) * s, tl[0] + (200 - k * 60) * s, tl[1] + (74 + k * 22) * s, 2.4);
+    const tg = [L(-5, y + 76), L(180, y + 76), L(180, y + 150), L(-5, y + 150)]; slab(g, tg, { seed: 92 + i, grain: false, rough: 1 }); g.font = `${50 * s}px CB`; g.fillStyle = RED; g.textAlign = 'center'; g.fillText(r[1], (tg[0][0] + tg[1][0]) / 2, tg[0][1] + 56 * s); g.restore(); });
+}
+function frame(t) {
+  const g = X; g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; BOIL = Math.floor(t * 12);
+  g.fillStyle = BK; g.fillRect(0, 0, W, H);
+  // Szene A: Treppenhaus, Tür fällt zu, Schlüssel drinnen, Uhr, Akku, Licht aus
+  if (t < K.suchen - .08) { const zoomIn = t > K.suchen - .48 ? es(lin(t, K.suchen - .48, K.suchen - .08)) : 0; roomCam(t, mix(-.45, .1, lin(t, 0, K.suchen - .48)) + zoomIn * .3);
+    g.save(); g.globalAlpha = 1 - zoomIn;
+    const doorOpen = .55 * (1 - es(lin(t, 0, K.zu - .02)));
+    room(g, t, { light: 1 - lin(t, K.leer - .1, K.leer + .02), doorOpen, moon: 1 });
+    specks(g, 5, 90, .7);
+    // Figur vor der Tür (von hinten)
+    const fp = P3(.3, RM.fl, 1.55); if (fp) figure(g, fp[0], fp[1] - 88 * fp[2] / 300 * 1.6, fp[2] / 300 * 1.6, { la: [.35, .15], ra: [-.35, -.15], ll: [.12, 0], rl: [-.12, 0] });
+    // Knall-Strahlen
+    const kn = lin(t, K.zu - .02, K.zu + .3); if (kn > 0 && kn < 1) { const c = P3(0, .2, RM.back); for (let r = 0; r < 10; r++) { const an = r / 10 * Math.PI * 2 + .2, l0 = 220 + 90 * eo(kn); cutL(g, c[0] + Math.cos(an) * l0, c[1] + Math.sin(an) * l0 * .9, c[0] + Math.cos(an) * (l0 + 70 * (1 - kn)), c[1] + Math.sin(an) * (l0 + 70 * (1 - kn)) * .9, 6 * (1 - kn) + 1); } }
+    // Schlüsselloch-Blick: runder Einsatz mit dem Schlüssel am Haken
+    const ins = at(t, K.schluessel, .3) * (1 - es(lin(t, K.kurz - .4, K.kurz - .08))); if (ins > 0) { const kh = P3(DOOR.x1 - .17, .45, RM.back), cx = 1420, cy = 410, r = 250 * eo(ins);
+      g.save(); g.fillStyle = BK; g.beginPath(); g.moveTo(kh[0], kh[1]); g.lineTo(cx - r * .7, cy + r * .7); g.lineTo(cx - r * .95, cy - r * .3); g.closePath(); g.globalAlpha = .6; g.fill(); g.restore();
+      cutL(g, kh[0], kh[1], cx - r * .72, cy + r * .69, 2.2); cutL(g, kh[0], kh[1], cx - r * .97, cy - r * .22, 2.2);
+      g.save(); g.fillStyle = BK; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); g.clip(); specks(g, 7, 40, .6, [cx - r, cy - r, 2 * r, 2 * r]);
+      for (let y = cy - r + 30; y < cy + r; y += 60) for (let x = cx - r + 30 + ((y / 60 | 0) % 2) * 30; x < cx + r; x += 60) motif(g, x, y, 1.5, .85);
+      cutL(g, cx - 60, cy - 120, cx + 60, cy - 120, 7); cutL(g, cx, cy - 120, cx, cy - 90, 6); const t4 = t - K.schluessel + .19, sw = .18 * Math.sin(t4 * 4.2) * Math.exp(-t4 * .8) + .05 * Math.sin(t * 1.6);
+      keyShape(g, cx, cy - 70, .42 * eo(ins), sw); g.restore(); cutCirc(g, cx, cy, r, 6); cutCirc(g, cx, cy, r - 14, 2.4); }
+    // 7-Segment-Uhr unten rechts wie „3:07“
+    const ck = at(t, K.mitternacht, .32); clockBox(g, 1440, 820, 1.25, t < K.mitternacht + .6 ? '23:51' : '23:52', ck);
+    // Handy mit Akku (Sicht aus der Hand)
+    const ph = at(t, K.akku, .34); if (ph > 0) { const cx = 400, cy = mix(1500, 680, ph); const p = phoneBody(g, cx, cy, .62, .06);
+      const bl = p(-80, -40), br2 = p(60, 40); g.save(); g.translate(cx, cy); g.rotate(.06); cutRect(g, -90 * .62, -45 * .62, 170 * .62, 90 * .62, 5); g.fillStyle = WH; g.fillRect(80 * .62, -18 * .62, 16 * .62, 36 * .62);
+      const lvl = 1 - lin(t, K.leer - .3, K.leer - .02); const blink = t > K.leer ? (Math.floor(t * 6) % 2 ? 1 : .2) : 1; g.globalAlpha = blink; g.fillStyle = RED; g.fillRect(-78 * .62, -33 * .62, (22 + 10 * lvl) * .62 * (lvl > 0 ? 1 : .35), 66 * .62);
+      g.globalAlpha = 1; g.font = '40px CB'; g.fillStyle = RED; g.textAlign = 'center'; g.fillText(t < K.leer - .1 ? '3 %' : '1 %', 0, 110); g.restore(); }
+    g.restore();
+    const dim = lin(t, K.leer - .05, K.leer + .08) * (1 - zoomIn); if (dim > 0) { g.save(); g.globalAlpha = dim * .45; g.fillStyle = BK; g.fillRect(0, 130, W, H); g.restore(); }
+  }
+  // Szene B: Suche am Handy
+  if (t > K.suchen - .48 && t < K.preis + .57) { const k = es(lin(t, K.suchen - .48, K.suchen - .06)); const s = mix(.62, 1.02, k), cx = mix(400, 960, k), cy = mix(680, 560, k);
+    if (t < K.preis - .02) { g.save(); g.globalAlpha = k; for (let y = 60; y < H; y += 110) for (let x = 60 + ((y / 110 | 0) % 2) * 55; x < W; x += 110) if (Math.abs(x - 960) > 300) motif(g, x, y, 1.1, .5); scenePhone(g, t, s, cx, cy); g.restore(); }
+    else { // Boden lässt los: Scherben fallen
+      if (!SHARDS) { const c = mk(W, H), cg = c.getContext('2d'); cg.fillStyle = BK; cg.fillRect(0, 0, W, H); const b = BOIL; BOIL = 96; for (let y = 60; y < H; y += 110) for (let x = 60 + ((y / 110 | 0) % 2) * 55; x < W; x += 110) if (Math.abs(x - 960) > 300) motif(cg, x, y, 1.1, .5); scenePhone(cg, K.preis - .05, 1.02, 960, 560); BOIL = b;
+        const R = rng(5), pieces = []; const cols = 7, rows = 5; const jx = [], pts = []; for (let i = 0; i <= cols; i++) for (let j = 0; j <= rows; j++) pts.push([i / cols * W + (i % cols ? (R() - .5) * 160 : 0), j / rows * H + (j % rows ? (R() - .5) * 120 : 0)]);
+        for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) { const a = pts[i * (rows + 1) + j], b2 = pts[(i + 1) * (rows + 1) + j], c2 = pts[(i + 1) * (rows + 1) + j + 1], d = pts[i * (rows + 1) + j + 1]; pieces.push({ q: [a, b2, c2, d], d: .1 + R() * .25, r: (R() - .5) * 1.4, vx: (R() - .5) * 300 }); }
+        SHARDS = { c, pieces }; }
+      const u = t - K.preis; for (const pc of SHARDS.pieces) { const k2 = Math.max(0, u - pc.d * .5); const dy = 2400 * k2 * k2 + 60 * k2, dx = pc.vx * k2, rot = pc.r * k2 * 2; if (dy > 1400) continue; const cxp = (pc.q[0][0] + pc.q[2][0]) / 2, cyp = (pc.q[0][1] + pc.q[2][1]) / 2;
+        g.save(); g.translate(cxp + dx, cyp + dy); g.rotate(rot); g.translate(-cxp, -cyp); g.beginPath(); pc.q.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.clip(); g.drawImage(SHARDS.c, 0, 0); g.restore();
+        g.save(); g.translate(cxp + dx, cyp + dy); g.rotate(rot); g.translate(-cxp, -cyp); cutPts(g, pc.q.concat([pc.q[0]]), 3, { seed: 7, taper: .02 }); g.restore(); }
+      // Riss-Strahlen im Glas
+      const ck = lin(t, K.preis - .03, K.preis + .12); for (let r = 0; r < 11; r++) { const an = r / 11 * 6.283 + .3; cutL(g, 1020, 420, 1020 + Math.cos(an) * 700 * eo(ck), 420 + Math.sin(an) * 700 * eo(ck), 3.4); } }
+  }
+  // Szene C: Fall durch den endlosen Flur
+  if (t > K.preis + .15 && t < K.riegel + .03) { const reveal = es(lin(t, K.preis + .15, K.preis + .69)); g.save(); if (reveal < 1) { g.beginPath(); g.arc(W / 2, H / 2, 1200 * reveal, 0, 7); g.clip(); } g.fillStyle = BK; g.fillRect(0, 0, W, H);
+    corridor(g, t); specks(g, 13, 120, .8);
+    // Dinge fliegen vorbei (Fenster, Uhr, Tür) wie das Bett im Original
+    for (const [o0, kind, dx, dy, rs] of [[.42, 0, -1, .5, 1.2], [.92, 1, 1, -.4, -.9], [1.42, 2, -.8, -.7, .8], [1.87, 0, .9, .7, -1.4], [2.32, 1, -1, .2, 1.6], [2.72, 2, .7, -.9, -1.2], [3.07, 0, -.4, 1, 1.8]]) { const t0 = K.preis + o0;
+      const u = t - t0; if (u < 0 || u > 1.1) continue; const sc = .12 * Math.exp(u * 3.1); if (sc > 4.5) continue; const x = W / 2 + dx * 520 * sc, y = H / 2 + dy * 300 * sc;
+      g.save(); g.translate(x, y); g.rotate(rs * u + CAM.roll); g.scale(sc, sc);
+      if (kind === 0) { slab(g, [[-150, -110], [150, -110], [150, 110], [-150, 110]], { seed: t0 * 10 | 0, grainK: .7 }); g.fillStyle = BK; g.fillRect(-150, -8, 300, 16); g.fillRect(-8, -110, 16, 220); g.strokeStyle = BK; g.lineWidth = 5; g.beginPath(); g.arc(80, -55, 30, 0, 7); g.stroke(); }
+      else if (kind === 1) { g.fillStyle = BK; g.fillRect(-170, -85, 340, 170); cutRect(g, -170, -85, 340, 170, 9); cutRect(g, -150, -65, 300, 130, 4); seg7(g, '23:52', -128, -45, 90); }
+      else { g.fillStyle = BK; g.fillRect(-90, -170, 180, 340); cutRect(g, -90, -170, 180, 340, 9); cutRect(g, -65, -145, 55, 130, 5); cutRect(g, 10, -145, 55, 130, 5); cutRect(g, -65, 15, 55, 130, 5); cutRect(g, 10, 15, 55, 130, 5); g.fillStyle = WH; g.beginPath(); g.arc(62, 0, 9, 0, 7); g.fill(); }
+      g.restore(); }
+    const fr = (t - K.preis - .37); figure(g, W / 2 + 30 * Math.sin(t * 1.7), H / 2 + 90 + 20 * Math.sin(t * 2.3), 1.35 + .2 * lin(t, K.p100 + .25, K.riegel - .29), { rot: .6 + fr * 1.1, la: [-2.1, -2.6 + .3 * Math.sin(t * 5)], ra: [2.0, 2.5 + .3 * Math.sin(t * 4)], ll: [-.55, -.2], rl: [.75, .35 + .3 * Math.sin(t * 3)] });
+    priceTag(g, t, K.p50, '50 €?', [-1, -1], BK); priceTag(g, t, K.p100, '100 €?', [1, -.6], BK); priceTag(g, t, K.p300, '300 €?', [.1, 1.05], RED);
+    g.restore(); }
+  // Sternburst -> Anruf bei Riegel 24
+  if (t > K.riegel - .39 && t < K.zwanzig - .04) { const open = es(lin(t, K.riegel - .13, K.riegel - .03)), flash = t >= K.riegel - .19 && t < K.riegel - .13 ? 1 : 0;
+    if (t >= K.riegel - .13 && open < 1) { g.fillStyle = WH; g.fillRect(0, 0, W, H); }
+    g.save(); if (t < K.riegel - .13) { g.beginPath(); g.rect(0, 0, 0, 0); g.clip(); } else if (open < 1) { const R = 1500 * open; g.beginPath(); for (let i = 0; i <= 24; i++) { const an = i / 24 * Math.PI * 2, r = i % 2 ? R * .55 : R; i ? g.lineTo(W / 2 + Math.cos(an) * r, H / 2 + Math.sin(an) * r) : g.moveTo(W / 2 + Math.cos(an) * r, H / 2 + Math.sin(an) * r); } g.closePath(); g.clip(); }
+    g.fillStyle = BK; g.fillRect(0, 0, W, H); specks(g, 21, 110, .8);
+    const wipeOut = es(lin(t, K.zwanzig - .54, K.zwanzig - .09));
+    const pcx = 1290, pcy = 560 + 8 * Math.sin(t * 1.4); const p = phoneBody(g, pcx, pcy, .98, .04 * Math.sin(t * .7));
+    // Anruf-Bildschirm
+    const kc = p(0, -200); cutCirc(g, kc[0], kc[1], 92, 5); cutCirc(g, kc[0], kc[1], 76, 2); keyShape(g, kc[0], kc[1] - 26, .17, .5);
+    g.font = '64px CB'; g.fillStyle = WH; g.textAlign = 'center'; const nm = p(0, -40); g.fillText('Riegel 24', nm[0], nm[1]);
+    const sec = Math.max(0, Math.floor((t - K.riegel) * 1)); g.font = '32px CB'; const tm = p(0, 10); g.fillText('00:' + String(Math.min(59, sec)).padStart(2, '0'), tm[0], tm[1]);
+    const hb = p(0, 300); g.fillStyle = RED; g.beginPath(); g.arc(hb[0], hb[1], 46, 0, 7); g.fill(); g.fillStyle = BK; g.fillRect(hb[0] - 24, hb[1] - 6, 48, 12);
+    // Schallbögen „sofort am Telefon“
+    const sw = at(t, K.sofort, .34); if (sw > 0) for (let k = 0; k < 3; k++) { const ph = ((t - K.sofort + .3) * 1.4 + k / 3) % 1; const sp = p(0, -330); g.save(); g.globalAlpha = sw * (1 - ph); cutCirc(g, sp[0] - 250, sp[1] + 60, 60 + ph * 200, 5, Math.PI * .8, Math.PI * 1.2); cutCirc(g, sp[0] + 250, sp[1] + 60, 60 + ph * 200, 5, -Math.PI * .2, Math.PI * .2); g.restore(); }
+    // Festpreis-Stempel
+    const fp = at(t, K.festpreis, .3); if (fp > 0) { const sc = 1 + (1 - fp) * .8; g.save(); g.translate(500, 560); g.rotate(-.07); g.scale(sc, sc); g.globalAlpha = clamp(fp * 1.6);
+      slab(g, [[-330, -190], [330, -190], [330, 190], [-330, 190]], { seed: 95, grainK: .25 }); g.fillStyle = BK; g.fillRect(-300, -160, 600, 6); g.fillRect(-300, 154, 600, 6);
+      g.font = '66px CB'; g.textAlign = 'center'; g.fillStyle = BK; g.fillText('FESTPREIS', 0, -60); g.font = '170px CB'; g.fillText('129 €', 0, 120); g.restore(); }
+    g.restore();
+    if (flash > 0) { g.save(); g.globalAlpha = flash; g.fillStyle = WH; g.fillRect(0, 0, W, H); g.restore(); }
+    if (t >= K.riegel - .13 && open < 1 && open > 0) { const R = 1500 * open; const pts = []; for (let i = 0; i <= 24; i++) { const an = i / 24 * Math.PI * 2, r = i % 2 ? R * .55 : R; pts.push([W / 2 + Math.cos(an) * r, H / 2 + Math.sin(an) * r]); } cutPts(g, pts, 10, { taper: .01, col: BK }); }
+    if (wipeOut > 0) { g.save(); g.fillStyle = BK; g.beginPath(); const xe = W * 1.1 * wipeOut; g.moveTo(-10, -10); for (let y = -10; y <= H + 10; y += 30) g.lineTo(xe + 26 * vn(y / 40, 3), y); g.lineTo(-10, H + 10); g.closePath(); g.fill(); g.restore();
+      const pts = []; for (let y = -10; y <= H + 10; y += 30) pts.push([W * 1.1 * wipeOut + 26 * vn(y / 40, 3), y]); cutPts(g, pts, 5, { taper: .02 }); }
+    // Sternburst selbst
+    const sb = t >= K.riegel - .39 && t < K.riegel - .19 ? 1 : 0; if (sb > 0) { const R = 1700 * ei(lin(t, K.riegel - .39, K.riegel - .19)) + 40; const pts = []; for (let i = 0; i < 28; i++) { const an = i / 28 * Math.PI * 2 + .1, r = i % 2 ? R * .42 : R; pts.push([W / 2 + Math.cos(an) * r, H / 2 + Math.sin(an) * r]); } g.save(); slab(g, pts, { seed: 99, grainK: .05 }); g.restore(); }
+  }
+  // Szene E: Licht an, Techniker kommt; Szene G: Tür offen, Licht fällt raus
+  if (t > K.zwanzig - .54 && t < K.oeffnet - .01 || t > K.klick + .12 && t < K.name + .04) { const inE = t < K.oeffnet - .01; const reveal = inE ? es(lin(t, K.zwanzig - .49, K.zwanzig - .06)) : es(lin(t, K.klick + .12, K.klick + .42));
+    g.save(); g.beginPath(); g.rect(inE ? 0 : 0, 0, W * reveal * 1.1, H); g.clip(); g.fillStyle = BK; g.fillRect(0, 0, W, H);
+    roomCam(t, inE ? mix(-.6, -.2, lin(t, K.zwanzig - .54, K.oeffnet - .01)) : mix(-.4, .2, es(lin(t, K.klick + .12, K.name + .04))));
+    const open = inE ? 0 : es(lin(t, K.klick + .3, K.klick + 1.0));
+    room(g, t, { light: inE ? at(t, K.zwanzig, .12) : 1, doorOpen: open, moon: 1 }); specks(g, 5, 90, .7);
+    if (open > 0) { // Lichtfläche aus der offenen Tür, massiv wie das Mondlicht im Original
+      g.save(); g.globalAlpha = open; const zN = Math.max(.2, CAM.z + .15); poly3(g, [[DOOR.x0, RM.fl, RM.back], [DOOR.x1, RM.fl, RM.back], [1.35, RM.fl, zN], [-1.35, RM.fl, zN]], { seed: 101, grainK: .25 });
+      const a = P3(0, RM.fl, RM.back), b = P3(0, RM.fl, zN); cutL(g, a[0], a[1], b[0], b[1], 10, { col: BK }); const c2 = P3(-1.1, RM.fl, 1.9), d = P3(1.1, RM.fl, 1.9); cutL(g, c2[0], c2[1], d[0], d[1], 9, { col: BK }); g.restore(); }
+    if (inE) { // Kunde wartet rechts, Techniker kommt mit Kappe und Koffer
+      const cp = P3(1.05, RM.fl, 2.0); figure(g, cp[0], cp[1] - 88 * cp[2] / 300, cp[2] / 300 * 1.35, { la: [.2, .1], ra: [-.2, -.1], ll: [.06, 0], rl: [-.06, 0] });
+      const wk = es(lin(t, K.zwanzig + .05, K.da - .04)), wx = mix(-1.35, -.1, wk), wz = mix(.7, 2.25, wk), step = Math.sin((t - K.zwanzig) * Math.PI / .31) * (wk < 1 ? .45 : 0);
+      const tp = P3(wx, RM.fl, wz); if (tp) figure(g, tp[0], tp[1] - 88 * tp[2] / 300, tp[2] / 300 * 1.35, { la: [-step * .8, 0], ra: [step * .8, .1], ll: [step, 0], rl: [-step, 0] }, { cap: true, box: true });
+      clockBox(g, 1440, 820, 1.25, (() => { const m = Math.round(mix(54, 74, es(lin(t, K.zwanzig, K.da)))); const hh = m >= 60 ? '00' : '23', mm = String(m % 60).padStart(2, '0'); return hh + ':' + mm; })(), 1);
+      const zk = at(t, K.zwanzig, .3); if (zk > 0) { g.save(); g.globalAlpha = zk; g.translate(1450, 600); cutRect(g, -10, -10, 330, 176, 5); seg7(g, '20', 20, 16, 120); g.font = '54px CB'; g.fillStyle = WH; g.fillText('MIN', 190, 128); g.restore(); } }
+    else { // Kunde geht ins Licht; Einsatz „Schloss heil“
+      const wk = es(lin(t, K.sind - .5, K.sind + .5)); const cp = P3(mix(.6, .05, wk), RM.fl, mix(1.9, 3.3, wk)); if (cp) { g.save(); g.globalAlpha = 1 - lin(t, K.sind + .2, K.sind + .6); figure(g, cp[0], cp[1] - 88 * cp[2] / 300, cp[2] / 300 * 1.35, { la: [.3, .1], ra: [-.3, -.1], ll: [.2 * Math.sin(t * 9) * wk, 0], rl: [-.2 * Math.sin(t * 9) * wk, 0] }); g.restore(); }
+      const hk = at(t, K.heil, .3) * (1 - lin(t, K.sind - .2, K.sind)); if (hk > 0) { const cx = 1470, cy = 380, r = 200 * eo(hk); g.save(); g.fillStyle = BK; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); g.restore(); cutCirc(g, cx, cy, r, 6); cutCirc(g, cx, cy, r - 14, 2.4);
+        if (r > 60) { g.save(); slab(g, Array.from({ length: 28 }, (_, i) => [cx + Math.cos(i / 28 * 6.283) * r * .5, cy + Math.sin(i / 28 * 6.283) * r * .5]), { seed: 111, grainK: .4 }); g.fillStyle = BK; g.beginPath(); g.arc(cx, cy - r * .08, r * .1, 0, 7); g.fill(); g.fillRect(cx - r * .04, cy - r * .08, r * .08, r * .28); g.restore();
+          cutPts(g, [[cx + r * .3, cy + r * .45], [cx + r * .48, cy + r * .66], [cx + r * .9, cy + r * .12]], 16, { seed: 5, taper: .15 }); } } }
+    g.restore(); if (reveal < 1 && reveal > 0) { const pts = []; for (let y = -10; y <= H + 10; y += 30) pts.push([W * 1.1 * reveal + 26 * vn(y / 40, 7), y]); cutPts(g, pts, 5, { taper: .02 }); } }
+  // Szene F: Schloss im Schnitt
+  if (t > K.oeffnet - .36 && t < K.klick + .42) { const rv = es(lin(t, K.oeffnet - .36, K.oeffnet - .03)), out = es(lin(t, K.klick + .12, K.klick + .42)); g.save(); g.beginPath(); g.arc(W / 2, H / 2, 1250 * rv, 0, 7); g.clip(); g.fillStyle = BK; g.fillRect(0, 0, W, H); specks(g, 31, 60, .5); lockSection(g, t); g.restore();
+    if (rv > 0 && rv < 1) cutCirc(g, W / 2, H / 2, 1250 * rv, 8); }
+  // Szene H: Marke
+  if (t > K.name - .36 && t < K.speichern + .14) { const rv = es(lin(t, K.name - .34, K.name - .03)); g.save(); g.beginPath(); g.arc(W / 2, H / 2, 1250 * rv, 0, 7); g.clip(); g.fillStyle = BK; g.fillRect(0, 0, W, H); specks(g, 41, 160, .8);
+    const z = 1 + .06 * lin(t, K.name - .36, K.speichern + .14); g.translate(W / 2, H / 2); g.scale(z, z); g.translate(-W / 2, -H / 2);
+    const tk = t - K.name + .26, kr = .5 * Math.exp(-tk * 1.1) * Math.sin(tk * 4) + .05 * Math.sin(t * 1.3); keyShape(g, 960, 130, .62, kr);
+    carved(g, 'RIEGEL', 850, 700, 230, at(t, K.name, .3)); const n4 = at(t, K.n24, .3); if (n4 > 0) { g.save(); const s2 = 1 + (1 - n4) * .6; g.translate(1560, 700); g.scale(s2, s2); carved(g, '24', 0, 0, 230, clamp(n4 * 1.5), RED); g.restore(); }
+    sun(g, 760, 900, 92, at(t, K.tag, .3)); moon(g, 1160, 900, 84, at(t, K.nacht, .3));
+    g.restore(); if (rv > 0 && rv < 1) cutCirc(g, W / 2, H / 2, 1250 * rv, 8); }
+  // Szene I: Nummer in der 7-Segment-Uhr
+  if (t > K.speichern - .36) { const rv = es(lin(t, K.speichern - .34, K.speichern - .03)); g.save(); g.beginPath(); g.rect(0, 0, W, H * rv); g.clip(); g.fillStyle = BK; g.fillRect(0, 0, W, H); specks(g, 51, 150, .8);
+    const z = 1 + .07 * lin(t, K.speichern - .36, DUR); g.translate(W / 2, H / 2); g.scale(z, z); g.translate(-W / 2, -H / 2);
+    for (let y = 80; y < H; y += 120) for (let x = 70 + ((y / 120 | 0) % 2) * 60; x < W; x += 120) if (y < 300 || y > 800) motif(g, x + 20 * Math.sin(t * .6), y, 1, .55);
+    const nk = at(t, K.nummer, .3); if (nk > 0) { const str = '06221 24 24 24', h = 118, w = seg7W(str, h); const x0 = 960 - w / 2 - 50, y0 = 400; g.save(); g.globalAlpha = nk; g.translate(0, (1 - nk) * 30);
+      cutRect(g, x0 - 20, y0 - 20, w + 140, h + 110, 7); cutRect(g, x0, y0, w + 100, h + 70, 3); seg7(g, str, x0 + 50, y0 + 36, h); g.restore(); }
+    const lg = at(t, K.speichern, .3); keyShape(g, 700, 250, .2, .9); g.save(); g.globalAlpha = lg; g.font = '64px CB'; g.fillStyle = WH; g.fillText('Riegel 24', 760, 285); g.restore();
+    const sv = at(t, K.brauchen, .32); if (sv > 0) { g.save(); g.translate(960, 760 + (1 - sv) * 30); g.globalAlpha = sv; slab(g, [[-80, -60], [80, -60], [80, 60], [-80, 60]], { seed: 121, grain: false, rough: 1.2 });
+      cutPts(g, [[-38, 0], [-8, 32], [42, -30]], 16, { col: BK, seed: 3, taper: .15 }); g.restore(); }
+    const wb = at(t, K.nummer, .3); g.save(); g.globalAlpha = wb; g.font = '44px CB'; g.fillStyle = WH; g.textAlign = 'center'; g.fillText('riegel24.de', 960, 950); g.restore();
+    g.restore(); }
+  // Holzmaserung im Schwarz (Druckstock), Weiß bleibt Weiß
+  g.save(); g.globalCompositeOperation = 'lighten'; g.drawImage(GRAIN, 0, 0); g.restore();
+  const f = Math.max(1 - lin(t, 0, .15), lin(t, DUR - .45, DUR)); if (f > 0) { g.fillStyle = `rgba(5,5,5,${f})`; g.fillRect(0, 0, W, H); }
+}
+window.FILM = { duration: DUR, width: W, height: H, ready: (async () => {
+  await Promise.all([document.fonts.load('40px CB'), document.fonts.load('40px CL')]); buildGrain(); frame(0); return true; })(),
+  seek(t) { frame(t); } };
+</script>
+</body></html>

@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Grün-Pfeil – V7 Pixel-Art</title>
+<style>
+html,body{margin:0;background:#000;overflow:hidden}
+canvas{display:block}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script src="zeiten.js"></script>
+<script>
+// Fahrschule Grün-Pfeil – V7 (Text und Timing neu, siehe ../REGIE.md) im Stil von Ahmed T'aide „It Wrote Every Frame“, Welt 1 (siehe ../STILBIBEL.md).
+// Echte Welt in 320×180 Pixeln, Faktor 6 ohne Glättung. Parallax-Ebenen werden weich verschoben, Figuren laufen auf 12 fps.
+const W = 1920, H = 1080, LW = 320, LH = 180, S = 6, GY = 148;
+const P = { sky0: '#172141', sky: '#1b2a50', mag: '#7c2550', magD: '#64193f', pink: '#ff81c1', salmon: '#f2867c', sunY: '#fcec25', sunO: '#fda300', sunR: '#e70047',
+  grass: '#00e432', grassD: '#00864e', brick: '#96443c', mortar: '#7a382e', speck: '#f3d3b0', ink: '#1b172c', ink2: '#111022', screen: '#291f41', cyan: '#67ffdf',
+  orange: '#f88954', orangeL: '#ffb07a', cream: '#fef2ea', cloudL: '#eb649f', cloudD: '#922d69', white: '#ffffff', gray: '#5a5560', grayL: '#8a8494',
+  housing: '#2b2842', housingL: '#4a4466', yel: '#fcec25', red: '#e70047', green: '#00e432', skin: '#f4b58c', hair: '#3a2230', navy2: '#2c3a6a' };
+const cv = document.getElementById('c'), X = cv.getContext('2d'); X.imageSmoothingEnabled = false;
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)), lin = (t, a, b) => clamp((t - a) / (b - a)), mix = (a, b, k) => a + (b - a) * k;
+const eo = x => 1 - Math.pow(1 - x, 3), eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const bounce = x => { if (x >= 1) return 1; const n = 7.5625, d = 2.75; if (x < 1 / d) return n * x * x; if (x < 2 / d) return n * (x -= 1.5 / d) * x + .75; if (x < 2.5 / d) return n * (x -= 2.25 / d) * x + .9375; return n * (x -= 2.625 / d) * x + .984375; };
+const q12 = t => Math.floor(t * 12 + 1e-6) / 12;
+function hsh(n) { n = Math.imul((n | 0) ^ 0x9E3779B9, 0x85EBCA6B); n ^= n >>> 13; n = Math.imul(n, 0xC2B2AE35); n ^= n >>> 16; return (n >>> 0) / 4294967296; }
+function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.imageSmoothingEnabled = false; return c; }
+const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+const bay = (x, y) => BAYER[((y % 4) + 4) % 4][((x % 4) + 4) % 4];
+function R_(g, x, y, w, h, c) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), w, h); }
+function px(g, x, y, c) { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), 1, 1); }
+function circ(g, cx, cy, r, c) { g.fillStyle = c; for (let y = -r; y <= r; y++) { const w = Math.floor(Math.sqrt(r * r + r * .8 - y * y)); if (w >= 0) g.fillRect(Math.round(cx - w), Math.round(cy + y), 2 * w + 1, 1); } }
+function box(g, x, y, w, h, c, o = P.ink) { R_(g, x - 1, y - 1, w + 2, h + 2, o); R_(g, x, y, w, h, c); }
+let T = 0;
+
+// ---------- Pixel-Schrift (Silkscreen, 5 Zeilen, hart geschwellt) ----------
+const FC = {}; let CAPTOP = 3;
+function capTop() { const t = mk(16, 12), g = t.getContext('2d'); g.font = '8px SK'; g.textBaseline = 'top'; g.fillStyle = '#fff'; g.fillText('H', 1, 3); const d = g.getImageData(0, 0, 16, 12).data; for (let y = 0; y < 12; y++) for (let x = 0; x < 16; x++) if (d[(y * 16 + x) * 4 + 3] > 110) return y; return 3; }
+function glyphs(s, col) { const key = s + '|' + col; if (FC[key]) return FC[key];
+  const t = mk(8 * s.length + 8, 14), g = t.getContext('2d'); g.font = '8px SK'; g.textBaseline = 'top'; g.fillStyle = '#fff'; g.fillText(s, 1, 3);
+  const d = g.getImageData(0, 0, t.width, 14).data; let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
+  for (let y = 0; y < 14; y++) for (let x = 0; x < t.width; x++) if (d[(y * t.width + x) * 4 + 3] > 110) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+  const w = x1 - x0 + 1, h = 8, c = mk(w, h), cg = c.getContext('2d'); cg.fillStyle = col;
+  const base = CAPTOP; // Versalhöhe (Umlautpunkte liegen 2 Zeilen darüber)
+  for (let y = 0; y < 14; y++) for (let x = x0; x <= x1; x++) if (d[(y * t.width + x) * 4 + 3] > 110) cg.fillRect(x - x0, y - base + 2, 1, 1);
+  return FC[key] = { c, w, h }; }
+// Text in Welt-Pixeln: sc = Pixel pro Schriftpixel; sh = Schattenfarbe (Versatz), chroma = [links, rechts]
+function ptext(g, s, x, y, sc, col, o = {}) { const gl = glyphs(s, col), w = gl.w * sc; const xx = Math.round(o.align === 'center' ? x - w / 2 : o.align === 'right' ? x - w : x), yy = Math.round(y - 2 * sc);
+  if (o.chroma) { g.drawImage(glyphs(s, o.chroma[0]).c, xx - sc, yy + Math.ceil(sc / 2), w, gl.h * sc); g.drawImage(glyphs(s, o.chroma[1]).c, xx + sc, yy - Math.floor(sc / 2), w, gl.h * sc); }
+  if (o.sh) g.drawImage(glyphs(s, o.sh).c, xx + (o.so ?? sc), yy + (o.so ?? sc), w, gl.h * sc);
+  g.drawImage(gl.c, xx, yy, w, gl.h * sc); return w; }
+const tw = (s, sc) => glyphs(s, '#fff').w * sc;
+
+// ---------- statische Ebenen ----------
+let SKYN, SKYD, HILLS, CITY, FAR, NEAR, GROUND, MASKS = [];
+function makeSky(dawn) { const c = mk(LW, LH), g = c.getContext('2d');
+  const sky0 = dawn ? '#2d3f7c' : P.sky0, sky = dawn ? '#3b4f8e' : P.sky, mag = dawn ? '#a13a6c' : P.mag, pink = dawn ? '#ffa0cf' : P.pink, dot2 = dawn ? '#ffc35a' : P.sunO;
+  for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) { let col;
+    if (y < 14) col = bay(x, y) < (y / 14) * 16 ? sky : sky0;
+    else if (y < 44) col = sky;
+    else if (y < 50) col = (x % 2 === 0 && y % 2 === 0) ? mag : sky;                         // Nacht → Magenta: lockeres Punktraster
+    else if (y < 55) col = (x + y) % 2 === 0 ? mag : sky;
+    else if (y < 66) col = mag;
+    else if (y < 72) col = (x % 2 === 0 && y % 2 === 0) ? pink : mag;                         // lockere rosa Punkte
+    else if (y < 77) col = (x + y) % 2 === 0 ? pink : mag;                                     // Schachbrett
+    else if (y < 81) col = (x % 2 === 0 && y % 2 === 1) ? mag : pink;
+    else col = (x % 3 === 0 && y % 3 === 0 && y > 92) ? dot2 : pink;                           // Horizontglühen mit Orangepunkten
+    g.fillStyle = col; g.fillRect(x, y, 1, 1); }
+  return c; }
+function makeMasks() { for (let k = 0; k <= 16; k++) { const c = mk(LW, LH), g = c.getContext('2d'); g.fillStyle = '#fff'; for (let y = 0; y < LH; y++) for (let x = 0; x < LW; x++) if (bay(x, y) < k) g.fillRect(x, y, 1, 1); MASKS.push(c); } }
+function pine(g, x, base, top, w, col) { // Tanne mit treppigen Stufen
+  const h = base - top; for (let y = top; y <= base; y++) { const k = (y - top) / h; let hw = Math.floor(k * w / 2 + (y % 5 < 2 ? 0 : 1) * k * 2.4); if (y - top < 3) hw = 0; g.fillStyle = col; g.fillRect(x - hw, y, hw * 2 + 1, 1); } }
+function makeLayers() {
+  // Hügel (Magenta), Welle periodisch über 640
+  HILLS = mk(640, LH); let g = HILLS.getContext('2d');
+  for (let x = 0; x < 640; x++) { const a = x / 640 * Math.PI * 2, top = Math.round(90 - 8 * Math.sin(a * 3 + .5) - 4 * Math.sin(a * 7 + 1.3) - 2 * Math.sin(a * 13)); R_(g, x, top, 1, LH - top, P.mag); }
+  // Stadt-Silhouette statt Burg: Türme in Magenta, gelbe Fensterpixel
+  CITY = mk(900, LH); g = CITY.getContext('2d'); const Rc = rng(7);
+  const towers = [[64, 14, 58], [80, 18, 40], [100, 12, 62], [212, 12, 62], [226, 22, 34], [250, 12, 54], [452, 14, 56], [468, 18, 42], [562, 12, 60], [576, 16, 46], [704, 14, 60], [720, 18, 44], [812, 12, 64], [826, 16, 50]];
+  for (const [x, w, top] of towers) { R_(g, x, top, w, 120 - top, P.mag); if (top < 60) { R_(g, x + 2, top - 3, w - 4, 3, P.mag); R_(g, x + Math.floor(w / 2) - 1, top - 9, 2, 6, P.mag); }
+    for (let yy = top + 4; yy < 110; yy += 5) for (let xx = x + 2; xx < x + w - 2; xx += 4) if (Rc() < .22) R_(g, xx, yy, 1, 2, P.yel); }
+  // ferne Tannen (Magenta), nahe Tannen (Nachtblau)
+  FAR = mk(640, LH); g = FAR.getContext('2d'); const Rf = rng(11); R_(g, 0, 128, 640, 30, P.mag);
+  for (let x = 4; x < 640; x += 7 + Math.floor(Rf() * 6)) pine(g, x, 150, 96 + Math.floor(Rf() * 22), 10 + Math.floor(Rf() * 6), P.mag);
+  for (let x = 0; x < 640; x++) { const top = 118 + Math.round(4 * Math.sin(x / 640 * Math.PI * 12)); R_(g, x, top + 10, 1, 40, P.mag); }
+  NEAR = mk(640, LH); g = NEAR.getContext('2d'); const Rn = rng(13);
+  for (let x = 6; x < 640; x += 9 + Math.floor(Rn() * 12)) pine(g, x, 150, 74 + Math.floor(Rn() * 44), 12 + Math.floor(Rn() * 8), P.sky);
+  // Boden: Grasnarbe mit Halmen und Blüten, Ziegel mit Fugen und Sprenkeln
+  GROUND = mk(640, LH); g = GROUND.getContext('2d'); const Rg = rng(17);
+  R_(g, 0, GY, 640, 3, P.grass); R_(g, 0, GY + 3, 640, 1, P.grassD); R_(g, 0, GY + 4, 640, LH - GY - 4, P.brick);
+  for (let x = 0; x < 640; x++) { if (Rg() < .45) R_(g, x, GY - 1, 1, 1, P.grass); if (Rg() < .18) R_(g, x, GY - 2 - Math.floor(Rg() * 2), 1, 2, P.grass); if (Rg() < .02) R_(g, x, GY - 2, 2, 2, Rg() < .5 ? P.pink : P.yel); }
+  for (let r = 0; r * 7 + GY + 4 < LH; r++) { const y = GY + 4 + r * 7; R_(g, 0, y + 6, 640, 1, P.mortar); for (let x = (r % 2) * 8; x < 640; x += 16) R_(g, x, y, 1, 6, P.mortar); }
+  for (let i = 0; i < 900; i++) R_(g, Math.floor(Rg() * 640), GY + 5 + Math.floor(Rg() * 27), 1, 1, P.speck); }
+function tile(img, off, f = 1) { const w = img.width, o = ((off % w) + w) % w; X.drawImage(img, -o * S, 0, w * S, LH * S); if (-o + w < LW + 2) X.drawImage(img, (-o + w) * S, 0, w * S, LH * S); }
+
+// ---------- Figuren (12 fps) ----------
+function car(g, x, y, o = {}) { // x = linke Kante, y = Bodenlinie
+  x = Math.round(x); y = Math.round(y); const k = o.flash ? '#ffffff' : null, body = k || P.orange, scr = k || P.screen, eye = k || P.cyan;
+  // Dachschild: vor dem Power-up gelbes „L“-Schild, danach das Grünpfeil-Schild
+  if (o.sign === 1) { box(g, x + 11, y - 27, 9, 5, k || P.yel); R_(g, x + 14, y - 26, 1, 4, P.ink); R_(g, x + 14, y - 23, 3, 1, P.ink); }
+  else if (o.sign === 2) { box(g, x + 9, y - 28, 12, 6, k || P.ink2, k ? P.ink : P.cream); R_(g, x + 11, y - 26, 6, 2, k || P.green); R_(g, x + 17, y - 27, 1, 4, k || P.green); R_(g, x + 18, y - 26, 1, 2, k || P.green); }
+  if (o.sign) R_(g, x + 14, y - 22, 2, 2, P.ink);
+  box(g, x + 5, y - 20, 20, 10, body); R_(g, x + 7, y - 18, 16, 7, scr);                      // Kabine = Bildschirmgesicht
+  const bl = Math.floor(T * 8) % 23 === 0 ? 1 : 3, lk = o.look || 0; R_(g, x + 10 + lk, y - 16 + (3 - bl), 3, bl, eye); R_(g, x + 16 + lk, y - 16 + (3 - bl), 3, bl, eye);
+  box(g, x + 1, y - 11, 30, 8, body); R_(g, x + 2, y - 10, 28, 1, k || P.orangeL);
+  R_(g, x + 28, y - 9, 3, 2, k || P.yel); R_(g, x + 1, y - 9, 1, 3, k || P.red);
+  if (o.blink && Math.floor(T * 6) % 2) R_(g, x + 29, y - 6, 2, 2, P.sunO);
+  const sp = Math.floor(T * 12) % 2; for (const wx of [x + 4, x + 21]) { circ(g, wx + 3, y - 2, 4, P.ink); R_(g, wx + 2 + sp, y - 3 + sp, 2, 2, P.grayL); } }
+function person(g, x, y, o = {}) { x = Math.round(x); y = Math.round(y); const st = o.walk ? Math.floor(T * 8) % 2 : 0;
+  R_(g, x + 1, y - 6, 3, 6 - st * 2, P.ink); R_(g, x + 5, y - 6, 3, 6 - (1 - st) * (o.walk ? 2 : 0), P.ink); R_(g, x + 2, y - 6, 1, 5 - st * 2, P.navy2); R_(g, x + 6, y - 6, 1, 5 - (1 - st) * (o.walk ? 2 : 0), P.navy2);
+  box(g, x + 1, y - 13, 7, 7, P.orange); R_(g, x + 3, y - 12, 3, 1, P.orangeL); box(g, x + 1, y - 21, 7, 7, P.skin); R_(g, x, y - 22, 9, 3, P.hair); R_(g, x, y - 20, 2, 3, P.hair);
+  R_(g, x + 5, y - 17, 1, 2, P.ink); R_(g, x + 7, y - 17, 1, 2, P.ink); }
+function crown(g, x, y, c = P.yel) { R_(g, x, y, 22, 5, P.ink); R_(g, x + 1, y + 1, 20, 3, c); for (const sx of [0, 8, 16]) { R_(g, x + sx, y - 5, 6, 5, P.ink); R_(g, x + sx + 1, y - 4, 4, 5, c); R_(g, x + sx + 2, y - 6, 2, 1, P.ink); }
+  R_(g, x + 3, y + 2, 2, 1, P.red); R_(g, x + 10, y + 2, 2, 1, P.cyan); R_(g, x + 17, y + 2, 2, 1, P.red); }
+// Boss: die Prüfungs-Ampel. state: 'angry' | 'white' | 'hurt' | 'green'
+function boss(g, cx, top, st = 'angry', o = {}) { cx = Math.round(cx); top = Math.round(top); const w = 48, h = 88, x = cx - w / 2, wh = st === 'white', rd = st === 'red';
+  const fill = wh ? P.cream : rd ? P.red : P.housing;
+  R_(g, cx - 4, top + h, 8, GY - top - h, P.ink); R_(g, cx - 3, top + h, 6, GY - top - h, wh ? P.cream : P.gray); R_(g, cx - 3, top + h, 1, GY - top - h, wh ? P.cream : P.grayL);
+  box(g, x, top, w, h, fill); if (!wh && !rd) { R_(g, x, top, 1, h, P.housingL); R_(g, x + 2, top + 2, w - 4, 1, P.housingL); }
+  crown(g, cx - 11, top - 5, wh ? P.cream : P.yel);
+  const lamps = [top + 16, top + 44, top + 72], on = st === 'green' ? 2 : st === 'hurt' ? -1 : 0;
+  lamps.forEach((ly, i) => { if (!wh && !rd) { R_(g, x + 4, ly - 15, w - 8, 2, P.ink); }
+    const lit = i === on, col = wh ? P.cream : rd ? P.red : i === 0 ? (lit ? P.red : '#5a1026') : i === 1 ? (lit ? P.sunO : '#5a4014') : (lit ? P.green : '#0c4a2c');
+    circ(g, cx, ly, 13, P.ink); circ(g, cx, ly, 12, col); if (lit && !wh) { circ(g, cx - 4, ly - 5, 2, 'rgba(255,255,255,.55)'); } });
+  if (wh || rd) return;
+  if (st === 'angry' || st === 'hurt') { const ly = lamps[0], bl = Math.floor(T * 8) % 17 === 0;
+    if (st === 'hurt') { for (const ex of [-5, 5]) { R_(g, cx + ex - 2, ly - 3, 1, 1, P.ink); R_(g, cx + ex - 1, ly - 2, 1, 1, P.ink); R_(g, cx + ex, ly - 1, 1, 1, P.ink); R_(g, cx + ex, ly - 3, 1, 1, P.ink); R_(g, cx + ex - 2, ly - 1, 1, 1, P.ink); } }
+    else { for (const ex of [-5, 5]) { R_(g, cx + ex - 3, ly - 4, 6, bl ? 1 : 5, P.cream); if (!bl) R_(g, cx + ex - (ex < 0 ? 0 : 1) + (o.look || 0), ly - 3, 2, 3, P.red); }
+      R_(g, cx - 8, ly - 6, 4, 1, P.ink); R_(g, cx - 5, ly - 5, 2, 1, P.ink); R_(g, cx + 4, ly - 6, 4, 1, P.ink); R_(g, cx + 3, ly - 5, 2, 1, P.ink); }
+    R_(g, cx - 5, ly + 4, 10, 4, P.ink); R_(g, cx - 4, ly + 4, 2, 1, P.cream); R_(g, cx - 1, ly + 4, 2, 1, P.cream); R_(g, cx + 2, ly + 4, 2, 1, P.cream); R_(g, cx - 4, ly + 6, 8, 1, '#ff5a8a'); }
+  if (st === 'green') { const ly = lamps[2]; R_(g, cx - 5, ly - 3, 3, 3, P.ink); R_(g, cx + 3, ly - 3, 3, 3, P.ink); R_(g, cx - 5, ly + 3, 1, 1, P.ink); R_(g, cx - 4, ly + 4, 8, 1, P.ink); R_(g, cx + 4, ly + 3, 1, 1, P.ink); } }
+function arrowL(g, x, y, c = P.sunO) { x = Math.round(x); y = Math.round(y); // Blinker-Pfeil „links“
+  for (let i = 0; i < 4; i++) { R_(g, x + i - 1, y - i - 1, 1, 2 * i + 3, P.ink); } R_(g, x + 3, y - 2, 7, 5, P.ink);
+  for (let i = 0; i < 4; i++) R_(g, x + i, y - i, 1, 2 * i + 1, c); R_(g, x + 4, y - 1, 5, 3, c); }
+function coin(g, x, y, ph) { x = Math.round(x); y = Math.round(y); const w = [4, 2, 1, 2][Math.floor(ph) % 4]; R_(g, x - Math.floor(w / 2) - 1, y - 1, w + 2, 8, P.ink); R_(g, x - Math.floor(w / 2), y, w, 6, P.yel); if (w > 2) R_(g, x - 1, y + 1, 1, 4, '#fff7b0'); }
+function sign(g, x, y, sc = 1) { // Grünpfeil-Schild: schwarze Tafel, grüner Pfeil nach rechts
+  x = Math.round(x); y = Math.round(y); R_(g, x - sc, y - sc, 14 * sc + 2 * sc, 10 * sc + 2 * sc, P.cream); R_(g, x, y, 14 * sc, 10 * sc, P.ink2);
+  R_(g, x + 2 * sc, y + 4 * sc, 7 * sc, 2 * sc, P.green); for (let i = 0; i < 4; i++) R_(g, x + (8 + i) * sc, y + (1 + i) * sc, sc, (8 - 2 * i) * sc, P.green); }
+function lamp(g, x, flick) { R_(g, x, GY - 26, 2, 26, P.gray); R_(g, x - 1, GY - 28, 4, 3, P.mortar); const f = flick % 3; R_(g, x - 1, GY - 33 + f % 2, 4, 5 - f % 2, P.sunO); R_(g, x, GY - 32 + f % 2, 2, 3, P.yel); }
+function tag(g, s, x, y, bg, fg = P.ink) { const w = tw(s, 1) + 6; R_(g, x - w / 2, y - 7, w, 9, bg); R_(g, x - w / 2 + 1, y - 8, w - 2, 1, bg); R_(g, x - w / 2 + 1, y + 2, w - 2, 1, bg); ptext(g, s, x, y - 5, 1, fg, { align: 'center' }); }
+function dotted(g, pts, c = P.yel, gap = 3) { for (let i = 0; i < pts.length; i += gap) R_(g, pts[i][0], pts[i][1], 1, 1, c); }
+
+// ---------- Zeitachse ----------
+// Alle Zeiten sind Abstände zu den gemessenen Wortzeiten K (zeiten.js), keine festen Sekunden.
+const HIT = K.bestanden - .04, FREEZE = [HIT, HIT + .3];            // Einschlag = Wortanfang „bestanden“
+const PAN1 = [K.dabei - .3, K.sechs - .1], CARGO = K.ohne, PANB = [K.sitzt + .17, K.dann + .28], LAND = K.probe, JUMP = K.diesmal, MORN = K.mont, ARR = K.arbeit - .27, ENDC = K.fahr - .2;
+const tfz = t => (t >= FREEZE[0] && t < FREEZE[1]) ? FREEZE[0] : t;
+function camX(t) { // langsame Dauerfahrt wie im Original, dazwischen Schwenks
+  if (t < PAN1[0]) return 10 * t / PAN1[0]; if (t < PAN1[1]) return mix(10, 260, eio(lin(t, PAN1[0], PAN1[1]))); if (t < K.und1) return mix(260, 272, lin(t, PAN1[1], K.und1));
+  if (t < K.zehn) return mix(272, 300, lin(t, K.und1, K.zehn)); if (t < PANB[0]) return mix(300, 560, lin(t, K.zehn, PANB[0])); if (t < PANB[1]) return mix(560, 820, eo(lin(t, PANB[0], PANB[1])));
+  if (t < MORN) return mix(820, 838, lin(t, PANB[1], MORN)); if (t < ARR) return mix(838, 1300, eio(lin(t, MORN, ARR))); return mix(1300, 1330, lin(t, ARR, DUR)); }
+const PX = 345 + 50, BOSS_A = 236, BOSS_B = 1070, BUILD = 1528;
+const TOK = n => K.zehn - .05 + (n + 1) * (K.sitzt - K.zehn + .05) / 10 - .02; // gleiche Formel wie die Level-Töne
+const DODGE = [K.echten, K.strecke + .45];   // Ausweich-Sprünge: Scheitel auf „echten“ und nach „Strecke“
+
+// ---------- Welt pro Bild ----------
+const SKYF = mk(LW, LH), CITYF = mk(900, LH), SP = mk(LW + 2, LH), UI = mk(LW, LH), TMP = mk(LW, LH);
+function drawSky(t, g) { g.clearRect(0, 0, LW, LH); g.drawImage(SKYN, 0, 0);
+  const dk = Math.round(16 * lin(q12(t), MORN, MORN + .8)); if (dk > 0) { const tg = TMP.getContext('2d'); tg.globalCompositeOperation = 'source-over'; tg.clearRect(0, 0, LW, LH); tg.drawImage(SKYD, 0, 0); tg.globalCompositeOperation = 'destination-in'; tg.drawImage(MASKS[dk], 0, 0); tg.globalCompositeOperation = 'source-over'; g.drawImage(TMP, 0, 0); }
+  // Sterne
+  const Rs = rng(3); for (let i = 0; i < 70; i++) { const x = Math.floor(Rs() * LW), y = Math.floor(Rs() * 44), ph = Rs(); if (Math.floor(t * 4 + ph * 9) % 7 === 0) continue; px(g, x, y, ph < .3 ? P.pink : P.white); }
+  // Wolkenbalken
+  for (const [x0, y, w, sp] of [[60, 24, 26, 1.2], [200, 14, 22, .8], [140, 52, 30, 1]]) { const x = Math.round(((x0 - q12(t) * sp) % 380 + 380) % 380 - 30);
+    R_(g, x + 4, y - 2, w - 10, 2, P.cloudL); R_(g, x, y, w, 2, P.cloudD); }
+  // Sonne mit Streifen
+  const cy = Math.round(90 - 12 * eio(lin(t, MORN, K.arbeit - .07))), r = 30, cx = 236;
+  for (let y = -r; y <= r; y++) { const yy = cy + y, w = Math.floor(Math.sqrt(r * r + r * .8 - y * y)); if (isNaN(w)) continue; let col = y < -12 ? P.sunY : y < 6 ? P.sunO : P.sunR;
+    if (y >= 6) { const k = y - 6; if ([4, 7, 10, 11, 14, 15, 18, 19, 20, 22, 23, 24].includes(k)) continue; }
+    R_(g, cx - w, yy, 2 * w + 1, 1, col); } }
+function frameWorld(t) {
+  const tf = tfz(t), cx = camX(tf), g = SP.getContext('2d'); g.clearRect(0, 0, SP.width, LH);
+  const fx = Math.floor(cx), W2S = wx => wx - fx; // Welt → Sprite-Ebene
+  // --- Stadt-Ebene (dynamisch: Questmarker) ---
+  const cg = CITYF.getContext('2d'); cg.clearRect(0, 0, 900, LH); cg.drawImage(CITY, 0, 0);
+  const JOBX = 226 + 11; // Turm mit dem neuen Job
+  if (t > K.sechs - .5 && t < MORN) { const k = lin(q12(t), K.sechs - .5, K.sechs - .2), by = 13 - (Math.floor(t * 6) % 2); R_(cg, JOBX + 1, 25, 5, 3, P.red);
+    if (k > 0) { const yy = Math.round(mix(-10, by, bounce(k))); R_(cg, JOBX - 3, yy, 7, 2, P.yel); R_(cg, JOBX - 2, yy + 2, 5, 1, P.yel); R_(cg, JOBX - 1, yy + 3, 3, 1, P.yel); R_(cg, JOBX, yy + 4, 1, 1, P.yel); } }
+  // --- Figuren auf der Bodenebene ---
+  for (let lx = Math.floor(cx / 110) * 110 - 40; lx < cx + LW + 40; lx += 110) lamp(g, W2S(lx), Math.floor(t * 10 + lx) );
+  // Fahrbahnmarkierung: zieht sich auf „echten“ von links nach rechts ein und bleibt
+  if (t > K.echten - .3) { const k = eo(lin(t, K.echten - .3, K.echten)); for (let wx = Math.floor(cx / 24) * 24; wx < cx + LW + 24; wx += 24) { const sx = W2S(wx); if (sx - (cx - fx) > LW * k) continue; R_(g, sx, GY + 14, 12, 2, P.cream); R_(g, sx, GY + 16, 12, 1, P.mortar); } }
+  // Gebäude am Ziel
+  if (cx > 1000) { const bx = W2S(BUILD); box(g, bx, GY - 74, 64, 74, P.mag); R_(g, bx, GY - 74, 64, 2, '#9a3a6a');
+    for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) R_(g, bx + 5 + c * 10, GY - 68 + r * 10, 5, 5, (hsh(r * 7 + c) < .6 || t > K.arbeit - .07) ? P.yel : P.magD);
+    R_(g, bx + 26, GY - 16, 12, 16, P.ink); R_(g, bx + 27, GY - 15, 10, 15, P.screen);
+    R_(g, bx + 31, GY - 90, 2, 16, P.gray); const fl = t > K.arbeit - .02 ? P.green : P.red; R_(g, bx + 33, GY - 90, 8, 5, fl); R_(g, bx + 33, GY - 86, 6, 2, fl);
+    if (t > MORN + .15 && t < K.arbeit - .1) { const yy = GY - 104 - (Math.floor(t * 6) % 2); R_(g, bx + 28, yy, 9, 2, P.yel); R_(g, bx + 29, yy + 2, 7, 1, P.yel); R_(g, bx + 30, yy + 3, 5, 1, P.yel); R_(g, bx + 31, yy + 4, 3, 1, P.yel); R_(g, bx + 32, yy + 5, 1, 1, P.yel); }
+    // Quest erfüllt: großes grünes Häkchen über dem Gebäude, fertig auf „Arbeit“
+    if (t > K.arbeit - .22 && t < ENDC + .25) { const k = clamp((t - (K.arbeit - .22)) / .22), ox = bx + 22, oy = GY - 100, n1 = Math.round(6 * clamp(k * 2)), n2 = Math.round(12 * clamp(k * 2 - 1));
+      for (let i = 0; i < n1; i++) { R_(g, ox + i - 1, oy + i - 1, 5, 5, P.ink); } for (let i = 0; i < n2; i++) { R_(g, ox + 6 + i - 1, oy + 5 - i - 1, 5, 5, P.ink); }
+      for (let i = 0; i < n1; i++) R_(g, ox + i, oy + i, 3, 3, P.green); for (let i = 0; i < n2; i++) R_(g, ox + 6 + i, oy + 5 - i, 3, 3, P.green); } }
+  // Boss
+  let bst = 'angry', bTop = 44;
+  const bossA = t < PAN1[1] - .5, bossB = t > LAND - .67 && t < MORN + .05;
+  if (bossA || bossB) { const bxw = bossA ? BOSS_A : BOSS_B; let top = 54 + (Math.floor(tf * 3) % 2);
+    if (bossB) { top = t < LAND ? Math.round(mix(-120, 54, clamp((q12(t) - (LAND - .35)) / .35) ** 2)) : top; }
+    if (bossB && t >= HIT) { bst = t < HIT + .14 ? 'white' : t < HIT + .3 ? 'red' : t < HIT + .4 ? 'hurt' : 'green'; }
+    if (bossB && t > HIT + .72) { // Zerfall in Pixel
+      const k = (t - (HIT + .72)) / .35; if (k < 1) { const Rb = rng(5); for (let i = 0; i < 90; i++) { const ox = (Rb() - .5) * 40, oy = Rb() * 100, vx = (Rb() - .5) * 90, vy = -40 - Rb() * 60;
+        R_(g, W2S(bxw) + ox + vx * k, top + oy + vy * k + 90 * k * k, 2, 2, [P.green, P.housing, P.yel, P.cream][i % 4]); } } }
+    else boss(g, W2S(bxw), top, bst, { look: -1 });
+    if (bossB && t > LAND - .05 && t < LAND + .3) { const k = (t - (LAND - .05)) / .35; for (let i = 0; i < 8; i++) R_(g, W2S(bxw) + (i - 4) * (6 + 30 * k), GY - 2 - 6 * Math.sin(k * 3.14) * (i % 2 + 1), 3, 2, P.speck); } }
+  // Pfeile der Prüfungs-Ampel (Szene A: Treffer, Szene E: ausgewichen)
+  for (const [ht, from, hit] of [[K.fehler, BOSS_A, true], [K.links1, BOSS_A, true], [DODGE[0], BOSS_B, false], [DODGE[1], BOSS_B, false]]) {
+    const a = ht - .42, k = (tf - a) / .42; if (k < 0 || k > (hit ? 1 : 1.5)) continue; const sx = W2S(from) - 16, carX = carPos(tf, cx) + (cx - fx) + 26;
+    const x = mix(sx, carX + (hit ? 0 : -30) * 1, k), y = 70 + (GY - 12 - 70) * Math.min(1, k); arrowL(g, x, y); }
+  // Held: Auto oder Fußgänger
+  const carScreenX = carPos(tf, cx), carY = carYpos(tf);
+  const hitFlash = [K.fehler, K.links1].some(h => tf > h && tf < h + .12) || (tf > K.durch - .2 && tf < K.durch - .08);
+  const B0 = K.pfeil + .1, B1 = K.ueben - .05; // Auto baut sich zwischen „Pfeil“ und „üben“ neu auf
+  const hasCar = tf < CARGO || tf > B0, sgn = tf > B0 ? 2 : 1;
+  if (hasCar) { if (tf > B0 && tf < B1 + .05) { // Auto baut sich per Raster auf
+      const lvl = Math.round(16 * lin(q12(tf), B0, B1)); const tg = TMP.getContext('2d'); tg.clearRect(0, 0, LW, LH); car(tg, carScreenX - (cx - fx), carY, { sign: 2 }); tg.globalCompositeOperation = 'destination-in'; tg.drawImage(MASKS[lvl], 0, 0); tg.globalCompositeOperation = 'source-over'; g.drawImage(TMP, cx - fx, 0); }
+    else { car(g, carScreenX + (cx - fx), carY, { sign: sgn, flash: hitFlash || (tf > CARGO - .3 && tf < CARGO && Math.floor(tf * 16) % 2), blink: tf > K.zehn - .1 && tf < PANB[0], look: tf > PANB[1] ? 1 : 0 });
+      if (tf < CARGO && tf > K.durch - .1) { for (let i = 0; i < 4; i++) { const p = ((tf * 1.3 + i * .25) % 1); R_(g, carScreenX + (cx - fx) + 2 - p * 6, carY - 10 - p * 14, 2 + Math.round(p * 2), 2 + Math.round(p * 2), p < .5 ? P.grayL : P.gray); } } } }
+  // Treffer-Kreuze über dem Auto
+  [K.fehler, K.links1].forEach((h, hi) => { const k = (tf - h) / .8; if (k < 0 || tf > PAN1[0]) return; const ox = carScreenX + (cx - fx) + 12 + (hi ? 8 : -6), oy = carY - 28 - Math.min(6, k * 12);
+    for (let i = -3; i <= 3; i++) { R_(g, ox + i, oy + i, 2, 2, P.red); R_(g, ox + i, oy - i, 2, 2, P.red); } });
+  // „ohne Auto“: Auto verpufft, gestrichelter Umriss bleibt und wird rot durchgestrichen
+  if (tf >= CARGO && tf < K.bei - .2) { const ax = carPos(CARGO - .01, camX(CARGO - .01)) + (cx - fx) - (cx - camX(CARGO - .01)), ay = GY;
+    const pf = (tf - CARGO) / .35; if (pf < 1) { for (let i = 0; i < 10; i++) { const a = i / 10 * 6.28, r = 6 + pf * 18; R_(g, ax + 15 + Math.cos(a) * r, ay - 10 + Math.sin(a) * r * .7, 3, 3, pf < .5 ? P.cream : P.grayL); } }
+    const pts = []; for (let x = 0; x <= 30; x++) { pts.push([ax + x, ay - 11]); pts.push([ax + x, ay - 1]); } for (let y = -11; y <= -1; y++) { pts.push([ax, ay + y]); pts.push([ax + 30, ay + y]); } for (let x = 5; x <= 25; x++) pts.push([ax + x, ay - 20]); for (let y = -20; y <= -11; y++) { pts.push([ax + 5, ay + y]); pts.push([ax + 25, ay + y]); }
+    for (const [x, y] of pts) if ((Math.round(x) + Math.round(y)) % 2 === 0) R_(g, x, y, 1, 1, P.cream);
+    // roter Strich quer durch den Umriss, fertig auf „Auto“
+    const ks = eo(lin(tf, K.auto - .25, K.auto)); for (let i = 0; i < 32 * ks; i++) { R_(g, ax + i, ay - i * .68 - 1, 3, 3, P.ink); R_(g, ax + i, ay - i * .68, 2, 2, P.red); } }
+  // Fußgänger ohne Auto
+  if (tf >= CARGO && tf < B0 + .05) { const wx = 345 + Math.min(50, Math.max(0, (tf - CARGO - .15) * 70)); const walking = tf > CARGO + .15 && tf < CARGO + .85; person(g, W2S(wx), GY, { walk: walking });
+    if (tf > K.kommen + .3 && tf < K.bei - .4) { R_(g, W2S(wx) + 10, GY - 26 - Math.floor(tf * 4) % 2, 2, 4, '#9fd8ff'); }
+    // gepunkteter Weg zum Job bricht ab
+    if (tf > K.kommen && tf < K.bei - .2) { const k = lin(tf, K.kommen, K.nicht - .03), sx = W2S(wx) + 4, ex = (JOBX - cx * .3), pts = [];
+      for (let i = 0; i <= 120 * k; i++) { const u = i / 120; pts.push([Math.round(mix(sx, ex, u)), Math.round(mix(GY - 18, 40, u) - Math.sin(u * Math.PI) * 30)]); }
+      dotted(g, pts.slice(0, 64), P.yel); if (k >= 1) { const m = pts[64] || pts[pts.length - 1]; for (let i = -4; i <= 4; i++) { R_(g, m[0] + i, m[1] + i, 2, 2, P.red); R_(g, m[0] + i, m[1] - i, 2, 2, P.red); } } } }
+  // Power-up-Block mit Grünpfeil
+  const BUMP = K.bei - .2; // Stoß gegen den ?-Block, Schild steigt bis „Bei“ heraus
+  if (tf > K.hin + .2 && tf < B0 + .3) { const bx = W2S(PX) + 1, bump = tf > BUMP && tf < BUMP + .13 ? -2 : 0; box(g, bx, 88 + bump, 12, 12, tf > BUMP + .03 ? '#b98a2a' : P.yel);
+    if (tf < BUMP + .03) { R_(g, bx + 4, 90, 4, 1, P.ink); R_(g, bx + 7, 91, 1, 3, P.ink); R_(g, bx + 5, 94, 2, 1, P.ink); R_(g, bx + 5, 97, 2, 2, P.ink); }
+    if (tf > BUMP + .03) { const k = lin(q12(tf), BUMP + .03, K.bei), k2 = lin(q12(tf), K.pfeil - .15, B0); const sy = mix(88, 66, eo(k)) + mix(0, 60, k2 * k2); if (k2 < 1) sign(g, bx - 1, sy, 1);
+      for (let i = 0; i < 8; i++) { const a = i / 8 * 6.28 + tf * 2, r = 12 + 4 * Math.sin(tf * 9); if (k2 < 1) R_(g, bx + 6 + Math.cos(a) * r, sy + 5 + Math.sin(a) * r, 1, 1, i % 2 ? P.green : P.white); }
+      // Name am Power-up (wie „SMOOTH“ über der Figur im Original), fertig auf „Grün“
+      const kt = lin(q12(tf), K.gruen - .25, K.gruen); if (kt > 0 && k2 < .2) tag(g, 'GRÜN-PFEIL', bx + 6, sy - 12 - Math.round((1 - eo(kt)) * 6), P.green); } }
+  // Training: zehn Blinkerpfeile werden eingesammelt
+  for (let n = 0; n < 10; n++) { const c = TOK(n), k = (tf - (c - .55)) / .55; if (k < 0 || k > 1.3) continue; const cxs = carScreenX + (cx - fx);
+    if (k <= 1) arrowL(g, mix(LW + 10, cxs + 28, k), carY - 18 + Math.round(Math.sin(k * 9) * 2)); else { for (let i = 0; i < 6; i++) { const a = i / 6 * 6.28, r = 3 + (k - 1) * 40; R_(g, cxs + 28 + Math.cos(a) * r, carY - 18 + Math.sin(a) * r, 1, 1, P.yel); } } }
+  // Checkpunkt-Münzen beim Ausweichen
+  for (const d of DODGE) { const k = (tf - d) / .6; if (k < 0 || k > 1) continue; coin(g, carScreenX + (cx - fx) + 12, carY - 34 - k * 20, tf * 14); }
+  // Hieb-Spur und Einschlag
+  if (tf > HIT - .23 && t < HIT + .52) { const ix = W2S(BOSS_B), iy = 70; if (t >= HIT) { const Rr = rng(9); for (let i = 0; i < 14; i++) { const a = i / 14 * 6.28, r0 = 6, r1 = 18 + Rr() * 16;
+      for (let s = r0; s < r1; s++) R_(g, ix - 6 + Math.cos(a) * s, iy + Math.sin(a) * s, 1, 1, i % 3 ? P.yel : P.white); } circ(g, ix - 6, iy, 5, P.white); }
+    const k = lin(tf, HIT - .23, HIT); for (let i = 0; i < 40 * k; i++) { const a = -2.6 + i / 40 * 2.4, r = 40; R_(g, ix - 14 + Math.cos(a) * r, iy + 10 + Math.sin(a) * r, 3, 3, P.yel); R_(g, ix - 14 + Math.cos(a) * (r - 3), iy + 10 + Math.sin(a) * (r - 3), 2, 2, P.white); } }
+  // Münzen auf gepunkteten Bahnen + Konfetti
+  if (t > HIT + .72 && t < ENDC + .1) { for (let i = 0; i < 12; i++) { const a = -1.2 - (i / 11) * 0.8 * (i % 2 ? 1 : -1) - Math.PI / 2 * 0, vx = (i - 5.5) * 9, vy = -70 - (i % 4) * 14, k = t - (HIT + .72) - i * .03; if (k < 0) continue;
+      const pts = []; for (let s = 0; s < k * 30 && s < 40; s++) { const u = s / 30; pts.push([W2S(BOSS_B) + vx * u, 70 + vy * u + 110 * u * u]); }
+      dotted(g, pts, P.yel, 2); const e = pts[pts.length - 1]; if (e && k < 1.5) coin(g, e[0], e[1], t * 12 + i); }
+    const Rc = rng(19); for (let i = 0; i < 60; i++) { const x = Rc() * LW, y0 = Rc() * 60, sp = 20 + Rc() * 30, y = (y0 + (t - (HIT + .72)) * sp) % 150; R_(g, x + (cx - fx), y, 1, 1, [P.red, P.green, P.yel, P.pink][i % 4]); } }
+  return { cx, fx };
+}
+function carPos(t, cx) { // Bildschirm-x (Welt-Pixel) der linken Autokante
+  if (t < PAN1[0]) { let x = 70; if (t < K.durch + .15) x -= 10 * Math.sin(lin(t, K.durch - .2, K.durch + .15) * Math.PI) ; for (const h of [K.fehler, K.links1]) if (t > h && t < h + .3) x -= 4 * Math.sin((t - h) / .3 * Math.PI); return Math.round(x); }
+  if (t < CARGO) return 70;
+  if (t < K.zehn) return Math.round(PX - 4 - cx);
+  if (t < PANB[1]) return Math.round(mix(PX - 4 - 300, 100, lin(t, PANB[0], PANB[1])));
+  if (t < K.und2 - .33) return 100;
+  if (t < JUMP) return Math.round(mix(100, 140, eio(lin(q12(t), K.und2 - .33, JUMP))));
+  if (t < HIT) return Math.round(mix(140, 208, lin(q12(t), JUMP, HIT)));
+  if (t < HIT + .72) return Math.round(mix(208, 190, lin(t, HIT + .3, HIT + .72)));
+  if (t < ARR) return Math.round(mix(190, 150, eio(lin(t, MORN, ARR))));
+  return Math.round(1450 - cx); }
+function carYpos(t) { let y = GY; for (const d of DODGE) { const k = (t - (d - .28)) / .5; if (k > 0 && k < 1) y -= Math.round(26 * Math.sin(k * Math.PI)); }
+  if (t > JUMP && t < HIT) { const k = lin(q12(t), JUMP, HIT); y = GY - Math.round(mix(0, 56, k) + Math.sin(k * Math.PI) * 30); }
+  if (t >= HIT && t < HIT + .72) { const k = lin(t, HIT + .3, HIT + .72); y = t < HIT + .3 ? GY - 56 : Math.round(mix(GY - 56, GY, k * k)); }
+  return y; }
+
+// ---------- Schrift und HUD (eigene 320×180-Ebene, vom Punch-in unberührt) ----------
+function drop(t, t0, t1) { return t < t0 ? -1 : bounce(clamp((t - t0) / (t1 - t0))); }
+function title(g, t, s, y, sc, col, t0, t1, tOut, o = {}) { if (t < t0 || t > tOut) return; if (tOut - t < .2 && Math.floor(t * 20) % 2) return;
+  const k = o.type ? 1 : drop(t, t0, t1), yy = o.type ? y : Math.round(mix(-20, y, k)); let str = s; if (o.type) { const n = Math.floor(lin(t, t0, t1) * s.length + .999); str = s.slice(0, n); if (!n) return; }
+  const col2 = o.swap && Math.floor(t * 6) % 2 ? o.swap : col; const xx = o.align === 'left' ? (o.x ?? 12) : 160;
+  if (o.type) ptext(g, str, xx - (o.align === 'left' ? 0 : tw(s, sc) / 2), yy, sc, col2, { sh: o.sh || P.ink2 });
+  else ptext(g, str, xx, yy, sc, col2, { align: o.align === 'left' ? 'left' : 'center', sh: o.sh || P.ink2, chroma: o.chroma }); }
+function hud(g, t) { const showA = t < PAN1[0] - .1, showB = t > LAND - .05 && t < HIT + .7; if (!showA && !showB) return;
+  ptext(g, 'SIE', 7, 11, 1, P.white, { sh: P.ink2 }); R_(g, 6, 18, 62, 5, P.ink2);
+  // Lebensbalken „SIE“ ist auf „Durchgefallen“ leer, der weiße Restbalken läuft nach
+  let hp = showA ? 1 - lin(t, K.durch - .25, K.durch) : 1; const hpW = showA ? Math.max(hp, 1 - lin(t, K.durch, K.durch + .6)) : 1; R_(g, 7, 19, Math.round(60 * hpW), 3, P.white); R_(g, 7, 19, Math.round(60 * hp), 3, P.green);
+  if (showA) { for (let i = 0; i < 3; i++) { const x = 7 + i * 10, lt = i === 0 ? K.durch : i === 1 ? K.schon : 99, lost = t > lt, fl = t > lt - .12 && t < lt + .25 && Math.floor(t * 16) % 2;
+      R_(g, x, 26, 8, 4, fl ? P.white : lost ? P.gray : P.orange); R_(g, x + 2, 25, 4, 1, fl ? P.white : lost ? P.gray : P.orange);
+      if (lost) { for (let j = 0; j < 5; j++) { R_(g, x + 1 + j, 24 + j, 1, 1, P.red); R_(g, x + 5 - j, 24 + j, 1, 1, P.red); } } }
+    // „schon wieder“: Ring pulst um die Herzen, wenn das zweite zerbricht
+    const kr = lin(t, K.schon - .05, K.schon + .5); if (kr > 0 && kr < 1) { const r = 5 + kr * 12, cx = 18, cy = 27; for (let i = 0; i < 40; i++) { const a = i / 40 * 6.28; if (i % 2) R_(g, cx + Math.cos(a) * (r + 8), cy + Math.sin(a) * r * .7, 1, 1, P.red); } } }
+  ptext(g, 'PRÜFUNG', 313, 11, 1, P.white, { align: 'right', sh: P.ink2 }); R_(g, 252, 18, 62, 5, P.ink2);
+  let bh = 1, bw = 1; if (showB && t >= HIT) { bh = 0; bw = 1 - lin(t, HIT + .3, HIT + .8); } R_(g, 313 - Math.round(60 * bw), 19, Math.round(60 * bw), 3, P.white); R_(g, 313 - Math.round(60 * bh), 19, Math.round(60 * bh), 3, P.red); }
+// Hourglass-Etikett (Questtimer) und einfaches Etikett
+function tagTimer(g, s, x, y) { const w = tw(s, 1) + 16; R_(g, x - w / 2, y - 7, w, 9, P.yel); R_(g, x - w / 2 + 1, y - 8, w - 2, 1, P.yel); R_(g, x - w / 2 + 1, y + 2, w - 2, 1, P.yel);
+  const hx = Math.round(x - w / 2 + 3), hy = y - 7; // Sanduhr 6×8 Pixel mit roter Füllung
+  ['######', '#rrrr#', '.#rr#.', '..##..', '..##..', '.#..#.', '#.rr.#', '######'].forEach((row, yy) => [...row].forEach((c, xx) => { if (c !== '.') R_(g, hx + xx, hy + yy, 1, 1, c === '#' ? P.ink : P.red); }));
+  ptext(g, s, hx + 10, y - 5, 1, P.ink); }
+function texts(g, t) { const RED = P.red, Y = P.yel, WH = P.white;
+  // Nur zwei Ausrufe wie „VICTORY!“ im Original, je ein Wort, als Ganzes, fertig auf dem gesprochenen Wort
+  title(g, t, 'DURCHGEFALLEN', 34, 3, RED, K.durch - .3, K.durch - .02, K.zwei - .45, { chroma: ['#6a1030', '#ff81c1'] });
+  title(g, t, 'BESTANDEN!', 36, 4, Y, HIT - .28, HIT, K.mont - .15, { chroma: [RED, '#67ffdf'], swap: t > HIT + .6 ? P.pink : null });
+  // Schlussbild: Name als Ganzes, dann Logo
+  if (t > ENDC) { title(g, t, 'FAHRSCHULE', 20, 2, Y, K.fahr - .28, K.fahr, 99);
+    const k = drop(t, K.gruen2 - .3, K.gruen2); if (k >= 0) { const w = tw('GRÜN-PFEIL', 3), x0 = 160 - (w + 48) / 2, yy = Math.round(mix(64, 44, k)); /* steigt von unten ein, kreuzt „FAHRSCHULE“ nicht */ sign(g, x0, yy - 1, 3); ptext(g, 'GRÜN-PFEIL', x0 + 48, yy, 3, P.green, { sh: P.ink2 }); } }
+  if (t > K.kostenlos + .3) { const CT = 'GRUENPFEIL-FAHRSCHULE.DE  0421 55 90 21', k = eo(lin(t, K.kostenlos + .3, K.kostenlos + .5)); ptext(g, CT, 160 - tw(CT, 1) / 2, 113 + Math.round((1 - k) * 6), 1, P.white, { sh: P.ink2 }); }
+  // Fähigkeitsfenster: springt auf „üben“ auf, Zielrahmen rastet auf „Schwachstelle“ ein, Häkchen auf „sitzt“
+  const W0 = K.ueben - .22, W1 = PANB[0] + .5;
+  if (t > W0 && t < W1) { const bx = 112, by = 84, kp = eo(lin(t, W0, K.ueben - .02)), hh = Math.max(2, Math.round(22 * kp)), oy = Math.round((22 - hh) / 2);
+    R_(g, bx - 1, by - 1 + oy, 98, hh, Y); R_(g, bx, by + oy, 96, Math.max(0, hh - 2), P.ink);
+    if (kp >= 1) { ptext(g, 'LINKSABBIEGEN', bx + 4, by + 3, 1, WH);
+      let n = 0; for (let i = 0; i < 10; i++) if (t > TOK(i)) n++; const lvl = Math.max(2, n); for (let i = 0; i < 10; i++) { const c = i < lvl ? (lvl <= 3 ? (Math.floor(t * 6) % 2 && t < K.zehn ? '#6a1030' : RED) : lvl < 10 ? P.sunO : P.green) : '#3a3355'; R_(g, bx + 4 + i * 5, by + 12, 4, 4, c); }
+      ptext(g, `${lvl}/10`, bx + 92, by + 12, 1, n === 10 ? P.green : lvl <= 3 ? RED : Y, { align: 'right' }); }
+    if (t > K.schwach - .3 && t < K.schwach + .6) { const k = lin(q12(t), K.schwach - .3, K.schwach), m = Math.round(mix(40, 2, eo(k))), col = t > K.schwach + .1 && Math.floor(t * 12) % 2 ? WH : RED;
+      for (const [sx, sy, dx, dy] of [[bx - m - 2, by - m - 2, 1, 1], [bx + 96 + m + 1, by - m - 2, -1, 1], [bx - m - 2, by + 20 + m + 1, 1, -1], [bx + 96 + m + 1, by + 20 + m + 1, -1, -1]]) { R_(g, sx + Math.min(0, dx * 6), sy, 6, 1, col); R_(g, sx, sy + Math.min(0, dy * 6), 1, 6, col); R_(g, sx + Math.min(0, dx * 6), sy + dy, 6, 1, col); R_(g, sx + dx, sy + Math.min(0, dy * 6), 1, 6, col); } }
+    if (t > K.sitzt - .05 && t < K.sitzt + .6 && Math.floor(t * 8) % 2) { R_(g, bx - 1, by - 1, 98, 1, P.green); R_(g, bx - 1, by + 20, 98, 1, P.green); R_(g, bx - 1, by - 1, 1, 22, P.green); R_(g, bx + 96, by - 1, 1, 22, P.green); }
+    if (t > K.sitzt - .22) { const k = clamp((t - (K.sitzt - .22)) / .22), ox = bx + 102, oy = by + 6, n1 = Math.round(4 * clamp(k * 2)), n2 = Math.round(9 * clamp(k * 2 - 1));
+      for (let i = 0; i < n1; i++) R_(g, ox + i - 1, oy + i - 1, 4, 4, P.ink); for (let i = 0; i < n2; i++) R_(g, ox + 4 + i - 1, oy + 3 - i - 1, 4, 4, P.ink);
+      for (let i = 0; i < n1; i++) R_(g, ox + i, oy + i, 2, 2, P.green); for (let i = 0; i < n2; i++) R_(g, ox + 4 + i, oy + 3 - i, 2, 2, P.green); } }
+  // Etiketten am Job-Turm: Questtimer „6 WOCHEN“ auf „sechs“, „JOB“ auf „Job“
+  const jx = Math.round(226 + 11 - camX(t) * .3);
+  if (t > K.sechs - .25 && t < K.bei - .2) { const k = eo(lin(q12(t), K.sechs - .25, K.sechs)); tagTimer(g, '6 WOCHEN', jx, 9 - Math.round((1 - k) * 8)); }
+  if (t > K.job - .25 && t < K.bei - .2) { const k = eo(lin(q12(t), K.job - .25, K.job)); tag(g, 'JOB', jx, 48 + Math.round((1 - k) * 6), Y); }
+  // dasselbe Etikett am Zielgebäude (Quest erfüllt), sobald es im Bild ist
+  if (t > K.selbst - .25 && t < ENDC + .25) { const bxs = 1528 - camX(t) + 32, k = eo(lin(t, K.selbst - .25, K.selbst)); if (bxs < LW + 10) tag(g, 'JOB', bxs, GY - 80 + Math.round((1 - k) * 6), Y); } }
+
+// ---------- Plakette (glatte Schrift wie „12 FPS“ im Original) ----------
+function plaque(t) { const P0 = K.erste - .3; if (t < P0) return; const k = eo(clamp((t - P0) / .3)); const w = 900, h = 214, x = 960 - w / 2, y = 420;
+  X.save(); X.translate(960, y + h / 2); X.scale(.85 + .15 * k, .85 + .15 * k); X.globalAlpha = k; X.translate(-960, -(y + h / 2));
+  X.fillStyle = 'rgba(17,16,34,.94)'; X.strokeStyle = P.yel; X.lineWidth = 7; X.beginPath(); X.roundRect(x, y, w, h, 22); X.fill(); X.stroke();
+  X.fillStyle = P.yel; X.font = '800 66px RB'; X.textAlign = 'center'; X.fillText('1. ÜBUNGSSTUNDE', 960, y + 80);
+  // „KOSTENLOS“ springt auf sein Wort ein
+  const kk = clamp((t - (K.kostenlos - .25)) / .25); if (kk > 0) { const sc = kk < 1 ? .6 + .4 * bounce(kk) : 1; X.save(); X.translate(960, y + 128); X.scale(sc, sc);
+    const blink = t > K.kostenlos && t < K.kostenlos + .6 && Math.floor(t * 10) % 2; X.fillStyle = blink ? P.white : P.green; X.fillText('KOSTENLOS', 0, 22); X.restore(); }
+  const n = Math.round(14 * lin(t, K.erste, K.kostenlos)); for (let i = 0; i < 14; i++) { X.fillStyle = i < n ? P.yel : '#3a3355'; X.fillRect(960 - 14 * 10 + i * 20, y + h - 36, 12, 12); }
+  X.restore(); }
+
+function draw(t) { T = t; X.setTransform(1, 0, 0, 1, 0, 0); X.imageSmoothingEnabled = false; X.fillStyle = '#0b0d17'; X.fillRect(0, 0, W, H);
+  const tf = tfz(t); drawSky(tf, SKYF.getContext('2d')); const { cx, fx } = frameWorld(t);
+  X.save();
+  // Hit-Stop: Punch-in auf den Einschlag + Wackeln (zeigt kurz den dunklen Rand)
+  const pk = t >= HIT && t < HIT + .55 ? (t < HIT + .3 ? 1 : 1 - eio(lin(t, HIT + .3, HIT + .55))) : 0;
+  const bossLand = t > LAND - .02 && t < LAND + .2 ? 1 : 0, shake = (t >= HIT && t < HIT + .3) || bossLand ? Math.round((hsh(Math.floor(t * 30)) - .5) * 30) : 0;
+  if (pk > 0 || shake) { const ix = (BOSS_B - cx - 6) * S, iy = 70 * S, z = 1 + .4 * pk; X.translate(ix + shake, iy + shake * .6); X.scale(z, z); X.translate(-ix, -iy); }
+  X.drawImage(SKYF, 0, 0, W, H);
+  tile(HILLS, cx * .15); X.drawImage(CITYF, -Math.round(cx * .3 * S), 0, 900 * S, H); tile(FAR, cx * .45); tile(NEAR, cx * .7); tile(GROUND, cx);
+  X.drawImage(SP, -Math.round((cx - fx) * S), 0, SP.width * S, H);
+  X.restore();
+  // Vignette wie im Original
+  const vg = X.createRadialGradient(960, 540, 520, 960, 540, 1250); vg.addColorStop(0, 'rgba(8,8,20,0)'); vg.addColorStop(1, 'rgba(8,8,20,.5)'); X.fillStyle = vg; X.fillRect(0, 0, W, H);
+  const ug = UI.getContext('2d'); ug.clearRect(0, 0, LW, LH); hud(ug, t); texts(ug, t); X.drawImage(UI, 0, 0, W, H);
+  plaque(t); }
+
+const ready = (async () => { for (const [n, u, d] of [['SK', 'Silkscreen-Bold.ttf', {}], ['RB', 'Rubik.ttf', { weight: '300 900' }]]) { const f = new FontFace(n, `url(${u})`, d); await f.load(); document.fonts.add(f); }
+  CAPTOP = capTop(); SKYN = makeSky(false); SKYD = makeSky(true); makeMasks(); makeLayers(); draw(0); })();
+window.FILM = { duration: DUR, width: W, height: H, ready, seek(t) { draw(t); } };
+</script></body></html>

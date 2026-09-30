@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Charon)
+const K = {"tuer": 0.33, "zu": 0.57, "schluessel": 1.17, "drinnen": 1.52, "kurz": 2.55, "mitternacht": 2.9, "akku": 3.6, "leer": 4.27, "suchen": 5.37, "notdienst": 6.1, "jeder": 6.67, "anderen": 7.57, "preis": 7.94, "p50": 8.8, "p100": 9.82, "p300": 10.58, "riegel": 11.8, "festpreis": 13.4, "sofort": 13.97, "zwanzig": 16.04, "minuten": 16.58, "da": 17.64, "oeffnet": 18.3, "folie": 19.07, "ohne": 19.94, "bohren": 20.25, "klick": 21.12, "heil": 22.42, "sind": 23.32, "name": 24.45, "n24": 24.9, "tag": 25.94, "nacht": 26.15, "speichern": 26.94, "nummer": 27.62, "brauchen": 28.61};
+const DUR = 30.7;

@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Sulafat)
+const K = {"vertrag": 0.49, "heute": 1.28, "kunden": 1.8, "sonst": 2.73, "auftrag": 3.24, "weg": 3.77, "post": 4.84, "frueh": 5.66, "ueberm": 6.23, "ueber": 7.07, "vz": 7.41, "zweimal": 8.32, "umgeladen": 8.84, "stadtbote": 9.91, "direkt": 10.89, "abgeholt": 11.75, "sechzig": 12.32, "quer": 13.43, "stadt": 14.09, "ohne": 14.77, "umweg": 15.04, "halb": 15.91, "halbw": 16.15, "vier": 16.35, "da": 17.57, "mit": 18.12, "unterschrift": 18.32, "foto": 19.36, "beleg": 19.72, "auftrag2": 20.48, "ihnen": 21.2, "name": 22.3, "kurier": 23.003, "heute2": 23.88, "bestellt": 24.12, "heute3": 24.9, "zugestellt": 25.09, "rufen": 26.27, "holen": 27.42, "sofort": 27.71};
+const DUR = 30.05;

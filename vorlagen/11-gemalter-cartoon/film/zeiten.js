@@ -1,0 +1,4 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Sulafat, Wortzeiten neu vermessen)
+const K = {"klammert": 0.83, "tuer": 1.71, "bloss": 2.43, "zahnarzt": 3.47, "dabei": 4.59, "backenzahn": 5.39, "seit": 6.02, "tagen": 6.22, "weh": 6.52, "jedes": 7.33, "warten": 7.82, "macht": 8.16, "loch": 8.67, "groesser": 9.03, "angst0": 9.94, "angst": 10.19, "bleibt": 10.55, "ein": 11.29, "leben": 11.42, "lang": 11.8, "bei": 12.79, "zahnfee": 13.16, "anders": 13.97, "besuch0": 15.02, "besuch": 15.6, "gespielt": 16.55, "loecher0": 17.46, "loecher": 17.76, "behandeln": 18.21, "ohne": 19.18, "bohren": 19.49, "nach": 20.18, "n20": 20.4, "minuten": 20.86, "vorbei": 21.94, "und": 22.71, "kind2": 23.02, "wieder": 23.43, "schluss": 24.82, "kza": 25.53, "kennen": 27.37, "kostenlos": 28.01};
+const CUT = {"bc": 4.42, "d": 9.48, "ef": 12.45, "g": 17.34, "h": 20.08, "i": 22.41, "j": 24.33};
+const DUR = 30.39;

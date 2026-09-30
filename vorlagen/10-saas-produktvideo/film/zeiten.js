@@ -1,0 +1,4 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Achird, Wortzeiten neu vermessen)
+const K = {"sonntag": 0.32, "schreibt": 2.18, "wasser": 2.77, "kueche": 3.49, "rufen": 4.26, "handwerker": 4.69, "an": 5.38, "niemand": 5.91, "ran": 6.56, "dazu": 7.1, "n20": 7.52, "nachrichten": 7.87, "belege": 8.84, "wochenende": 9.75, "weg": 10.57, "mit": 11.53, "domus": 11.78, "anders": 12.52, "meldet": 13.14, "meldet_w": 13.53, "schaden": 14.07, "portal": 14.58, "foto": 15.4, "dreissig": 16.25, "n30": 16.42, "minuten": 16.85, "notdienst": 17.48, "beauftragt": 18.09, "live0": 18.94, "live": 19.87, "gemeldet": 20.46, "beauftragt2": 21.09, "erledigt": 21.83, "bleiben": 22.57, "esstisch": 23.52, "sitzen": 24.01, "schluss": 24.68, "monat": 26.57, "kostenlos": 27.12};
+const CUT = {"cd": 6.85, "ef0": 10.93, "ef1": 11.2, "gh": 15.7, "h": 18.45, "ij0": 22.15, "ij1": 22.43, "end": 24.3};
+const DUR = 29.32;

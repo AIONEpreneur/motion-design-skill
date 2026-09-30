@@ -1,0 +1,3 @@
+// erzeugt von zeiten.py aus out/vo.json (kie/gemini-2.5-pro-tts:Sulafat)
+const K = {"regen": 0.95, "ihr": 1.57, "garten": 1.76, "unter": 2.16, "wasser": 2.53, "sommer": 3.26, "braun": 4.44, "kinder": 5.2, "drinnen": 6.22, "grund": 7.25, "boden": 8.17, "verdichtet": 8.62, "gw": 9.9, "lockert": 10.47, "n30": 11.08, "tief1": 12.0, "darunter": 12.95, "kies": 13.88, "ab": 14.72, "oben": 15.37, "mutter": 16.22, "kompost": 17.08, "wurzeln": 18.28, "tief2": 19.15, "versickert": 20.23, "rasen2": 21.21, "gruen": 22.11, "regen3": 22.8, "hitze": 23.42, "ende": 24.53, "probe": 26.38, "kostenlos": 27.22, "rasen1": 4.04, "lieber": 5.87, "wasser2": 14.4, "regen2": 19.93, "gartenbau": 25.08};
+const DUR = 29.66;

@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Kanzlei Weber – V7</title>
+<style>
+@font-face { font-family: 'Archivo'; src: url('fonts/Archivo.ttf') format('truetype'); font-weight: 100 900; font-stretch: 62% 125%; }
+@font-face { font-family: 'JBMono'; src: url('fonts/JetBrainsMono.ttf') format('truetype'); font-weight: 100 800; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: #060a09; }
+#gl { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+.ov { position: absolute; inset: 0; pointer-events: none; }
+#flood { background: radial-gradient(ellipse 70% 90% at 55% 55%, #ff2414 0%, #da0001 50%, rgba(160,0,0,.55) 82%, rgba(90,0,0,0) 100%); opacity: 0; }
+#black { background: #000; opacity: 0; }
+.blk { position: absolute; top: 88px; font-family: 'Archivo'; font-weight: 800; color: #eff3f2;
+  letter-spacing: -0.012em; line-height: 0.9; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; }
+.blk.left { left: 124px; text-align: left; }
+.blk.right { right: 124px; text-align: right; }
+.yr { font-size: 196px; font-weight: 880; }
+.yr.long { font-size: 150px; }
+.val { font-size: 136px; margin-top: 6px; font-weight: 860; }
+.yr .yt { position: relative; display: inline-block; }
+.yr .st { position: absolute; left: -12px; top: 50%; height: 18px; margin-top: -4px; background: #ea3036; border-radius: 3px; width: 0; }
+.chk { display: inline-block; width: 132px; height: 116px; vertical-align: -8px; }
+.chk.big { width: 196px; height: 172px; vertical-align: 0; margin-top: 4px; }
+.chk path { fill: none; stroke: #d4f81c; stroke-width: 22; stroke-linecap: round; stroke-linejoin: round; }
+.lime { color: #d4f81c; } .red { color: #ea3036; } .orange { color: #f5a020; }
+#headline { position: absolute; left: 0; right: 0; top: 150px; text-align: center; font-family: 'Archivo'; font-weight: 800;
+  font-size: 104px; color: #eff3f2; letter-spacing: -0.01em; opacity: 0; white-space: nowrap; }
+#title { position: absolute; left: 0; right: 0; top: 250px; text-align: center; }
+#title .t1 { font-family: 'Archivo'; font-weight: 800; font-size: 92px; color: #eff3f2; letter-spacing: 0.005em; white-space: nowrap; line-height: 1; opacity: 0; }
+#title .t2 { font-family: 'JBMono'; font-weight: 700; font-size: 50px; color: #eff3f2; margin-top: 30px; white-space: nowrap; letter-spacing: 0; opacity: 0; }
+#title .pill { display: inline-block; margin-top: 30px; background: #d4f81c; color: #0b0f06; font-family: 'Archivo'; font-weight: 800;
+  font-size: 50px; padding: 12px 42px 14px; border-radius: 60px; letter-spacing: 0.01em; opacity: 0; }
+</style>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<div id="flood" class="ov"></div>
+<div id="L" class="blk left"><div class="yr"><span class="yt"><span class="tx"></span><i class="st"></i></span></div><div class="val"></div></div>
+<div id="R" class="blk right"><div class="yr"><span class="yt"><span class="tx"></span><i class="st"></i></span></div><div class="val"></div></div>
+<div id="headline">Das muss <span id="nicht">nicht</span> sein.</div>
+<div id="title">
+  <div class="t1" id="t1">KANZLEI WEBER <span style="opacity:.9">·</span> <span class="lime">STEUERBERATUNG</span></div>
+  <div class="t2" id="t2">kanzlei-weber.de · 040 318 27 60</div>
+  <div><span class="pill" id="pill">Erstgespräch <span id="kost" style="display:inline-block">kostenlos</span></span></div>
+</div>
+<div id="black" class="ov"></div>
+
+<script src="zeiten.js"></script>
+<script type="importmap">{ "imports": {
+  "three": "./vendor/three/three.module.js",
+  "three/addons/": "./vendor/three/addons/" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// Kanzlei Weber V5 – Bild im Stil von „Bitcoin, 10 anos“ (Felipe Borges): schwarze Leere, Drahtgitter-Boden,
+// dicke Leuchtröhre mit rundem Kopf, quadratische Tor-Rahmen, zweizeilige fette Schrift oben links.
+// V7: alle Zeiten kommen aus K (zeiten.py, Wortzeiten an der Pegelkurve geprüft) – keine festen Sekundenwerte.
+const DURATION = DUR;
+const W = 1920, H = 1080;
+const T_GATE = K.gate, T_WEEKS = K.weeks, T_STAIRS = K.stairs;
+const T_MONTH = K.mon;
+const T_Q = K.q, T_IMPACT = K.impact, T_MACH = K.mach, TB0 = K.tb0;
+const T_REW = K.nicht - 0.2;                 // Rückspulen beginnt auf „nicht“
+const T_OVA = K.gestrichen + 0.55;           // Rausfahren in die rote Kurve
+const T_OVB = K.ende - 1.18;                 // Rausfahren in die ganze gelbe Kurve
+
+// ---------- helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const sstep = (a, b, x) => { const k = clamp((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+const eIO = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+const eOut = k => 1 - Math.pow(1 - k, 3);
+function prng(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function monotone(keys) {
+  const n = keys.length, xs = keys.map(k => k[0]), ys = keys.map(k => k[1]);
+  const d = [], m = new Array(n);
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { const tt = 3 / Math.sqrt(s); m[i] = tt * a * d[i]; m[i + 1] = tt * b * d[i]; }
+  }
+  return x => {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 0; while (x > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i], t = (x - xs[i]) / h, t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h * m[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h * m[i + 1];
+  };
+}
+
+// ---------- palette ----------
+const C = {
+  bg: new THREE.Color('#060a09'), yel: new THREE.Color('#e8f510'), ora: new THREE.Color('#f7a51c'),
+  red: new THREE.Color('#e3000f'), grid: new THREE.Color('#5d655b'), glass: new THREE.Color('#8a8f90'), lime: new THREE.Color('#8fe81a'),
+};
+function slopeColor(T, out) {
+  const s = T.y / Math.max(1e-4, Math.hypot(T.x, T.z));
+  return out.copy(C.yel).lerp(C.ora, sstep(0.02, -0.28, s)).lerp(C.red, sstep(-0.3, -0.85, s));
+}
+
+// ---------- renderer ----------
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl'), antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+const scene = new THREE.Scene();
+scene.background = C.bg.clone();
+const cam = new THREE.PerspectiveCamera(55, W / H, 0.05, 3000);
+
+// ---------- tube shader ----------
+const tubeVS = `
+attribute float aT;
+uniform float uThick; uniform float uR; uniform float uYS;
+varying vec3 vN; varying vec3 vV; varying vec3 vC;
+void main(){
+  float r = uR * aT;
+  vec3 c = position - normal * r;
+  c.y *= uYS;
+  vec3 p = c + normal * r * uThick;
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  vN = normalize(normalMatrix * normal); vV = -mv.xyz;
+  vC = color;
+  gl_Position = projectionMatrix * mv;
+}`;
+const headVS = `
+uniform float uThick; uniform float uYS; uniform vec3 uCol;
+varying vec3 vN; varying vec3 vV; varying vec3 vC;
+void main(){
+  vec4 mv = modelViewMatrix * vec4(position * uThick, 1.0);
+  vN = normalize(normalMatrix * normal); vV = -mv.xyz; vC = uCol;
+  gl_Position = projectionMatrix * mv;
+}`;
+const tubeFS = `
+uniform float uDim;
+varying vec3 vN; varying vec3 vV; varying vec3 vC;
+void main(){
+  float ndv = clamp(abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0);
+  vec3 c = vC * (0.52 + 0.6 * ndv) + mix(vec3(1.0, 1.0, 0.72), vC, 0.35) * pow(ndv, 5.0) * 0.3;
+  gl_FragColor = vec4(c * uDim, 1.0);
+}`;
+const SHARED = { uThick: { value: 1 }, uYS: { value: 1 }, uDim: { value: 1 } };
+
+// Kurve als Objekt: Röhre, Kopf, x->u-Abbildung
+function makeLine(pts, R, colorFn, radFn, seg = 4000) {
+  const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0], p[1], p[2] || 0)), false, 'centripetal');
+  const NS = 6000, XS = new Float32Array(NS + 1);
+  for (let i = 0; i <= NS; i++) XS[i] = curve.getPointAt(i / NS).x;
+  const xToU = x => {
+    if (x <= XS[0]) return 0; if (x >= XS[NS]) return 1;
+    let lo = 0, hi = NS; while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (XS[mid] < x) lo = mid; else hi = mid; }
+    return (lo + (x - XS[lo]) / (XS[hi] - XS[lo])) / NS;
+  };
+  const RAD = 18, geo = new THREE.TubeGeometry(curve, seg, R, RAD, false);
+  const n = geo.attributes.position.count, col = new Float32Array(n * 3), aT = new Float32Array(n), c = new THREE.Color();
+  for (let j = 0; j <= seg; j++) {
+    const u = j / seg, p = curve.getPointAt(u), T = curve.getTangentAt(u);
+    colorFn(p, T, c); const r = radFn ? radFn(p.x) : 1;
+    for (let i = 0; i <= RAD; i++) { const k = j * (RAD + 1) + i; col[k * 3] = c.r; col[k * 3 + 1] = c.g; col[k * 3 + 2] = c.b; aT[k] = r; }
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('aT', new THREE.BufferAttribute(aT, 1));
+  const uni = { ...SHARED, uR: { value: R } };
+  const mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: tubeVS, fragmentShader: tubeFS, vertexColors: true }));
+  mesh.frustumCulled = false; scene.add(mesh);
+  const hU = { ...SHARED, uCol: { value: new THREE.Color() } };
+  const head = new THREE.Mesh(new THREE.SphereGeometry(R, 36, 24), new THREE.ShaderMaterial({ uniforms: hU, vertexShader: headVS, fragmentShader: tubeFS }));
+  head.frustumCulled = false; scene.add(head);
+  const L = { curve, xToU, geo, mesh, head, hU, seg, RAD, R, colorFn, radFn,
+    p: x => curve.getPointAt(xToU(x)), T: x => curve.getTangentAt(xToU(x)) };
+  L.grow = (x, vis = true) => {   // Röhre bis x zeigen, Kopf an die Spitze
+    const u = xToU(x); mesh.visible = head.visible = vis && u > 0.0005;
+    geo.setDrawRange(0, Math.floor(u * seg) * RAD * 6);
+    const p = curve.getPointAt(u); head.position.set(p.x, p.y * SHARED.uYS.value, p.z);
+    colorFn(p, curve.getTangentAt(u), hU.uCol.value);
+    const r = radFn ? radFn(p.x) : 1; head.scale.setScalar(r);
+    return p;
+  };
+  return L;
+}
+
+// ---------- Lauf A: der Bescheid-Absturz ----------
+const FLOOR_A = -32;
+const PTS_A = [[-14, -1.2], [0, 0], [8, 2.6], [16, 6], [22, 9], [25, 10.3], [27.5, 9.6], [30, 5.5], [32.5, -1.5], [35, -8.5], [38, -12.6], [42, -14.2],
+  [50, -15.2], [58, -16], [65, -16.6], [67.5, -19.1], [73, -19.4], [75.5, -21.9], [81, -22.2], [83.5, -24.7], [89, -25], [91.5, -27.5],
+  [96, -28], [101, -30], [106, -31.25], [112, -31.38], [124, -31.38], [140, -31.38]];
+const colA = (p, T, out) => {
+  slopeColor(T, out);
+  if (p.x > 24) out.lerp(C.red, sstep(25, 30, p.x));      // nach dem Bescheid-Tor bleibt alles rot
+  return out;
+};
+const A = makeLine(PTS_A, 0.6, colA);
+const headXA = monotone([[0, 0], [T_GATE, 22], [T_GATE + 0.63, 40], [T_GATE + 1.21, 44.5], [T_WEEKS[0], 50], [T_WEEKS[1], 54], [T_WEEKS[2], 58], [T_WEEKS[3], 62],
+  [T_STAIRS[0], 66], [T_STAIRS[1], 74], [T_STAIRS[2], 82], [T_STAIRS[3], 90], [K.polster, 99], [K.weg, 108], [K.maschine, 115], [K.gestrichen, 122],
+  [T_OVA + 0.15, 128], [T_REW - 0.2, 128.5], [T_REW, 127], [TB0 - 0.28, 1.5], [TB0, 0]]);
+
+// ---------- Lauf B: mit Kanzlei ----------
+const headXB = monotone([[TB0, 0], [TB0 + 0.48, 6], [T_Q[0] - 1.1, 38], [K.hochW + 0.1, 86], [T_IMPACT, 132], [T_MACH, 176], [K.trotzdem + 0.14, 194], [K.ende - 0.33, 200]]);
+const XM = T_MONTH.map(headXB), XQ = T_Q.map(headXB), XG = headXB(T_IMPACT), XMACH = headXB(T_MACH);
+const yB = x => 0.17 * x + 0.95 * Math.sin(0.12 * x) + 12 * sstep(XMACH + 1, XMACH + 20, x);
+const PTS_B = []; for (let x = -14; x <= 214; x += 2) PTS_B.push([x, yB(x)]);
+const B = makeLine(PTS_B, 0.6, (p, T, out) => slopeColor(T, out));
+// Rücklage: zweigt am ersten Quartals-Tor ab, läuft darunter mit, endet an der Glaswand (bezahlt den Bescheid)
+const yRes = x => yB(x) - 5.5 * sstep(XQ[0], XQ[0] + 12, x);
+const radRes = x => 0.5 + 0.17 * XQ.slice(1).filter(q => x > q).length + 0.17 * sstep(XQ[2] + 2, XG - 4, x);
+const PTS_R = []; for (let x = XQ[0] - 2; x <= XG + 0.01; x += 1) PTS_R.push([x, yRes(x)]);
+const RL = makeLine(PTS_R, 0.6, (p, T, out) => out.copy(C.lime), radRes, 1500);
+
+// ---------- Boden ----------
+const gridU = { uCam: { value: new THREE.Vector3() }, uHead: { value: new THREE.Vector3() }, uHeadCol: { value: new THREE.Color() },
+  uFog: { value: new THREE.Vector2(20, 110) }, uSp: { value: 7.0 }, uLW: { value: 0.085 }, uLine: { value: C.grid.clone() }, uBg: { value: C.bg.clone() },
+  uGlow: { value: 1 }, uHit: { value: 0 }, uLK: { value: 1 } };
+const grid = new THREE.Mesh(new THREE.PlaneGeometry(1600, 900), new THREE.ShaderMaterial({
+  uniforms: gridU,
+  vertexShader: `varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `
+  uniform vec3 uCam, uHead, uHeadCol, uLine, uBg; uniform vec2 uFog; uniform float uSp, uLW, uGlow, uHit, uLK;
+  varying vec3 vW;
+  void main(){
+    vec2 p = vW.xz;
+    vec2 g = abs(fract(p / uSp - 0.5) - 0.5) * uSp;
+    vec2 fw = fwidth(p);
+    vec2 l = 1.0 - smoothstep(vec2(uLW) - fw * 0.5, vec2(uLW) + fw * 0.9, g);
+    float line = max(l.x, l.y);
+    line *= clamp(2.2 - length(fw) / uSp * 9.0, 0.0, 1.0);
+    float d = distance(vW, uCam);
+    float fog = 1.0 - smoothstep(uFog.x, uFog.y, d);
+    vec2 dh = vW.xz - uHead.xz;
+    float r2 = dot(dh, dh);
+    float hg = exp(-r2 / (26.0 * 26.0)) * uGlow;
+    float hit = uHit * exp(-r2 / (40.0 * 40.0));
+    vec3 col = uBg + uHeadCol * (hg * 0.03 + hit * 0.05);
+    col += (uLine * (0.85 + 0.2 * hg) + uHeadCol * (hg * 0.18 + hit * 0.4)) * line * uLK;
+    gl_FragColor = vec4(mix(uBg, col, fog), 1.0);
+  }`,
+}));
+grid.rotation.x = -Math.PI / 2; grid.position.set(100, -13, 0); scene.add(grid);
+
+// ---------- Tore (quadratische extrudierte Rahmen) ----------
+function frameGeo(o, n, depth) {
+  const s = new THREE.Shape(); s.moveTo(-o, -o); s.lineTo(o, -o); s.lineTo(o, o); s.lineTo(-o, o); s.lineTo(-o, -o);
+  const h = new THREE.Path(); h.moveTo(-n, -n); h.lineTo(-n, n); h.lineTo(n, n); h.lineTo(n, -n); h.lineTo(-n, -n); s.holes.push(h);
+  const g = new THREE.ExtrudeGeometry(s, { depth, bevelEnabled: false }); g.translate(0, 0, -depth / 2); g.computeVertexNormals(); return g;
+}
+const gateGeo = frameGeo(2.95, 2.5, 0.7);
+const machGeo = (() => { const a = frameGeo(2.95, 2.55, 0.8), b = frameGeo(2.2, 1.85, 0.8); // Doppelrahmen = „die Maschine“
+  const g = new THREE.BufferGeometry(); const pa = a.toNonIndexed(), pb = b.toNonIndexed();
+  const pos = new Float32Array([...pa.attributes.position.array, ...pb.attributes.position.array]);
+  const nor = new Float32Array([...pa.attributes.normal.array, ...pb.attributes.normal.array]);
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); return g; })();
+const gateVS = `varying vec3 vN; varying vec3 vV; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vN = normalize(normalMatrix*normal); vV = -mv.xyz; gl_Position = projectionMatrix * mv; }`;
+const gateFS = `uniform vec3 uCol; uniform float uI; uniform float uA; varying vec3 vN; varying vec3 vV;
+  void main(){ float ndv = abs(dot(normalize(vN), normalize(vV))); vec3 c = uCol * uI * (0.62 + 0.38 * ndv); gl_FragColor = vec4(c, uA); }`;
+const DARK = new THREE.Color('#9aa38c');
+function gate(line, x, tp, s, geo = gateGeo, opt = {}) {
+  const g = { line, x, tp, s, ...opt };
+  g.p0 = line.p(x); g.T = line.T(x); g.col = line.colorFn(g.p0, g.T, new THREE.Color());
+  g.mat = new THREE.ShaderMaterial({ uniforms: { uCol: { value: g.col.clone() }, uI: { value: .3 }, uA: { value: 1 } }, vertexShader: gateVS, fragmentShader: gateFS, transparent: true });
+  g.mesh = new THREE.Mesh(geo, g.mat); g.mesh.frustumCulled = false; scene.add(g.mesh);
+  return g;
+}
+const GA = [gate(A, 22, T_GATE, 1.05), ...T_WEEKS.map((t, i) => gate(A, 50 + 4 * i, t, .62))];
+// Maschinen-Tor in Lauf A steht auf dem Boden und kippt um
+const MA = gate(A, 125, 99, 1.25, machGeo, { mach: true });
+MA.p0 = new THREE.Vector3(125, FLOOR_A + 2.95 * 1.25, 0); MA.T = new THREE.Vector3(1, 0, 0);
+const GB_ = [...T_MONTH.map((t, i) => gate(B, XM[i], t, .56)), ...T_Q.map((t, i) => gate(B, XQ[i], t, 1.22))];
+const MB = gate(B, XMACH, T_MACH, 1.3, machGeo, { mach: true });
+const ALLG = [...GA, MA, ...GB_, MB];
+
+// ---------- Glaswand (Bescheid) + Scherben ----------
+const GP = B.p(XG), GT = B.T(XG);
+const GBv = new THREE.Vector3(0, 0, -1), GUp = new THREE.Vector3().crossVectors(GT, GBv).normalize();
+const shardVS = `varying vec3 vN; varying vec3 vV; varying vec3 vW; void main(){ vec4 w = modelMatrix*vec4(position,1.0); vW = w.xyz; vec4 mv = viewMatrix*w; vN = normalize(normalMatrix*normal); vV = -mv.xyz; gl_Position = projectionMatrix*mv; }`;
+const shardFS = `uniform vec3 uCol; uniform vec3 uHead; uniform vec3 uHeadCol; uniform float uA; varying vec3 vN; varying vec3 vV; varying vec3 vW;
+  void main(){ float ndv = abs(dot(normalize(vN), normalize(vV))); float fr = pow(1.0 - ndv, 3.0);
+    float hl = exp(-distance(vW, uHead) / 5.5);
+    vec3 c = uCol * (0.5 + 0.3 * ndv) + vec3(0.5) * fr * 0.4 + uHeadCol * hl * 0.5;
+    gl_FragColor = vec4(c, uA * (0.62 + 0.3 * fr)); }`;
+const shards = [];
+{
+  const rnd = prng(20260927), NA = 13, RINGS = [0, 1.1, 2.8, 5.2, 8.3, 12.2];
+  const ang = []; for (let j = 0; j < NA; j++) ang.push((j + (rnd() - .5) * .7) / NA * Math.PI * 2);
+  const jit = []; for (let i = 0; i < RINGS.length; i++) { jit.push([]); for (let j = 0; j < NA; j++) jit[i].push(i === 0 || i === RINGS.length - 1 ? RINGS[i] : RINGS[i] * (1 + (rnd() - .5) * .28)); }
+  const pt = (i, j) => { const jj = (j + NA) % NA; const a = ang[jj] + (j >= NA ? Math.PI * 2 : 0); return [Math.cos(a) * jit[i][jj], Math.sin(a) * jit[i][jj]]; };
+  for (let i = 0; i < RINGS.length - 1; i++) for (let j = 0; j < NA; j++) {
+    let poly;
+    if (i === 0) poly = [[0, 0], pt(1, j), pt(1, j + 1)];
+    else if (i === RINGS.length - 2) {
+      poly = [pt(i, j)]; const a0 = ang[j], a1 = ang[(j + 1) % NA] + (j + 1 >= NA ? Math.PI * 2 : 0);
+      for (let s = 0; s <= 4; s++) { const a = lerp(a0, a1, s / 4); poly.push([Math.cos(a) * RINGS[i + 1], Math.sin(a) * RINGS[i + 1]]); }
+      poly.push(pt(i, j + 1));
+    } else poly = [pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1)];
+    const cx = poly.reduce((s, p) => s + p[0], 0) / poly.length, cy = poly.reduce((s, p) => s + p[1], 0) / poly.length;
+    const sh = new THREE.Shape(); poly.forEach((p, k) => k ? sh.lineTo(p[0] - cx, p[1] - cy) : sh.moveTo(p[0] - cx, p[1] - cy));
+    const geo = new THREE.ShapeGeometry(sh);
+    const mat = new THREE.ShaderMaterial({ uniforms: { uCol: { value: C.glass }, uHead: gridU.uHead, uHeadCol: gridU.uHeadCol, uA: { value: 1 } },
+      vertexShader: shardVS, fragmentShader: shardFS, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false;
+    const lm = new THREE.LineBasicMaterial({ color: new THREE.Color('#e9f7a0'), transparent: true, opacity: .2, depthWrite: false });
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), lm));
+    const r = Math.hypot(cx, cy);
+    shards.push({ mesh, mat, lm, cx, cy, r, ax: new THREE.Vector3(rnd() - .5, rnd() - .5, rnd() - .5).normalize(), w: 2 + rnd() * 6, fwd: 0.6 + rnd() * 0.8, out: 0.7 + rnd() * 0.6, delay: r * 0.012 });
+    scene.add(mesh);
+  }
+}
+const baseQ = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(GBv, GUp, GT));
+
+// ---------- Bloom ----------
+const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4, type: THREE.HalfFloatType });
+const composer = new EffectComposer(renderer, rt);
+composer.setPixelRatio(1); composer.setSize(W, H);
+composer.addPass(new RenderPass(scene, cam));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.72, 0.5, 0.5);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+// ---------- Kamera ----------
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const hA = t => { const x = headXA(t); return { x, p: A.p(x), T: A.T(x) }; };
+const hB = t => { const x = headXB(t); return { x, p: B.p(x), T: B.T(x) }; };
+function chase(L, h, back, up, side, ahead, lookUp = 0.4) {
+  const pb = L.p(h.x - back);
+  return { pos: pb.clone().add(V(0, up, side)), look: h.p.clone().addScaledVector(h.T, ahead).add(V(0, lookUp, 0)) };
+}
+const DIVE_P = A.p(40).add(V(0.2, 0.2, 0.3));
+const OVA = { pos: V(62, -8, 175), look: V(62, -8, 0) };
+const OVB = { pos: V(100, 44, 262), look: V(100, 44, 0) };
+const SHOTS = [
+  // Lauf A
+  { t: 0, b: 0, fov: 55, f: t => chase(A, hA(t), 9.5, 2.0, 0, 7, 0.6) },
+  { t: T_GATE + 0.04, b: 0.13, fov: 58, f: t => { const k = sstep(T_GATE + 0.21, T_GATE + 0.63, t);
+      return { pos: DIVE_P.clone().add(V(lerp(3, 0, k), lerp(1.5, 0, k), lerp(1.5, 0, k))), look: A.p(29).add(V(0, lerp(1, -3, k), 0)) }; } },
+  { t: T_GATE + 0.81, b: 0.3, fov: 56, f: t => chase(A, hA(t), 9.5, 2.6, 0, 8, -0.6) },
+  { t: T_STAIRS[0] - 0.32, b: 0.45, fov: 44, f: t => { const h = hA(t); return { pos: h.p.clone().add(V(-4, 5, 18)), look: h.p.clone().add(V(4.5, -1.6, 0)) }; } },
+  { t: K.polster - 0.45, b: 0.6, fov: 54, f: t => chase(A, hA(t), 9, 2.2, -3.2, 8, 0.4) },
+  { t: K.maschine - 0.3, b: 0.6, fov: 50, f: t => { const h = hA(t); return { pos: V(h.x - 12, FLOOR_A + 3.0, 10), look: V(Math.min(h.x + 9, 127), FLOOR_A + 5.8, 0) }; } },
+  { t: T_OVA, b: 0.8, fov: 32, f: t => ({ pos: OVA.pos.clone().add(V(-(t - T_OVA - 0.28) * 1.5, 0, 0)), look: OVA.look.clone().add(V(-(t - T_OVA - 0.28) * 1.5, 0, 0)) }) },
+  // Lauf B
+  { t: TB0 - 0.3, b: 0.45, fov: 55, f: t => chase(B, hB(t), 9.5, 2.4, 0, 7, 2.2) },
+  { t: T_Q[0] - 0.45, b: 0.55, fov: 50, f: t => { const h = hB(t), k = eIO(clamp((t - (T_Q[0] - 0.45)) / 2.6));
+      return { pos: h.p.clone().add(V(lerp(-8, -10, k), lerp(7, 8, k), lerp(12, 15, k))), look: h.p.clone().add(V(6, lerp(3.6, 3.2, k), 0)) }; } },
+  { t: K.resA - 0.1, b: 0.7, fov: 44, f: t => { const h = hB(t); return { pos: h.p.clone().add(V(-6, 4.5, 23)), look: h.p.clone().add(V(4.5, 2.3, 0)) }; } },
+  { t: T_IMPACT - 0.88, b: 0.5, fov: 54, f: t => { const h = hB(t), k = sstep(T_IMPACT - 0.83, T_IMPACT + 1.57, t); return { pos: h.p.clone().add(V(lerp(-8, -11, k), lerp(1.2, 2.2, k), lerp(8.5, 5.5, k))), look: h.p.clone().add(V(6, 0.3, 0)) }; } },
+  { t: T_IMPACT + 1.77, b: 0.9, fov: 52, f: t => { const h = hB(t); return { pos: h.p.clone().add(V(-9, 3.5, -8)), look: h.p.clone().add(V(4, 0.6, 0)) }; } },
+  { t: T_MACH - 0.65, b: 0.45, fov: 50, f: t => { const g = MB.p0, u = t - (T_MACH - 0.5); return { pos: g.clone().add(V(-13 + u * 1.5, -2, 15)), look: g.clone().add(V(2, 3.5 + u * 2.6, 0)) }; } },
+  { t: T_OVB, b: 1.1, fov: 30, f: t => ({ pos: OVB.pos.clone().add(V((t - K.ende - 0.07) * 0.8, 0, 0)), look: OVB.look.clone().add(V((t - K.ende - 0.07) * 0.8, 0, 0)) }) },
+];
+function camAt(t) {
+  let i = 0; while (i + 1 < SHOTS.length && t >= SHOTS[i + 1].t) i++;
+  const s = SHOTS[i], a = s.f(t); let fov = s.fov;
+  if (i > 0 && t < s.t + s.b) {
+    const p = SHOTS[i - 1], b = p.f(t), k = eIO((t - s.t) / s.b);
+    a.pos.lerpVectors(b.pos, a.pos, k); a.look.lerpVectors(b.look, a.look, k); fov = lerp(p.fov, s.fov, k);
+    if (s.arc) { const w = Math.sin(Math.PI * k); a.pos.add(V(s.arc[0] * w, s.arc[1] * w, s.arc[2] * w)); }
+  }
+  return { ...a, fov };
+}
+
+// ---------- Schrift (V7: Daten-Etiketten wie im Original – nur Name / Zahl, keine Satzstücke) ----------
+const NB = ' ';
+const de = n => n.toLocaleString('de-DE');
+const pick = (t, ts, arr) => arr[Math.max(0, ts.filter(x => t >= x).length - 1)];
+const MON = ['Januar', 'Februar', 'März'];
+const MON_T = [T_MONTH[0] - .3, T_MONTH[1] - .3, T_MONTH[2] - .3];
+const Q_T = T_Q.map(q => q - .3);
+const T_RES = K.sagt - 0.15;                        // Wertzeile wechselt von „Steuer“ zu „Rücklage“
+// Häkchen zeichnet sich in den 0,25 s vor seinem Wort (k = 0…1)
+const chk = (k, big) => k <= 0 ? '' : `<svg class="chk${big ? ' big' : ''}" viewBox="0 0 118 104"><path pathLength="1" stroke-dasharray="1" stroke-dashoffset="${(1 - eOut(k)).toFixed(3)}" d="M12 56 L44 88 L106 14"/></svg>`;
+const kChk = (t, w) => clamp((t - (w - 0.25)) / 0.25);
+const BEATS = [
+  { side: 'L', a: Math.max(0.02, K.bescheid - 0.3), z: K.faellig - 0.3, yr: () => 'Bescheid', val: () => `<span class="red">−14.000${NB}€</span>`, va: K.n14 - 0.3 },
+  { side: 'L', a: K.faellig - 0.3, z: K.dazu - 0.3, yr: () => 'Fällig', val: () => `<span class="red">4${NB}Wochen</span>`, va: K.wochen - 0.3 },
+  { side: 'R', a: K.dazu - 0.3, z: K.polster - 0.3, long: true, yr: () => 'Vorauszahlung', val: () => `<span class="red">+3.600${NB}€</span>`, va: K.steigen - 0.3 },
+  { side: 'L', a: K.polster - 0.3, z: K.maschine - 0.3, yr: () => 'Polster',
+    val: t => `<span class="red">${de(Math.round(8400 * (1 - eIO(clamp((t - K.polster) / (K.weg - K.polster)))) / 100) * 100)}${NB}€</span>`, va: K.polster - 0.2 },
+  { side: 'L', a: K.maschine - 0.3, z: T_OVA + 0.05, yr: () => 'Maschine', val: () => '', va: K.maschine, strike: K.gestrichen },
+  { side: 'L', a: MON_T[0], z: Q_T[0], yr: t => pick(t, MON_T, MON), yrT: t => pick(t, MON_T, MON_T), val: () => `<span class="lime">Belege</span>`, va: K.belege - 0.3 },
+  { side: 'L', a: Q_T[0], z: K.impact - 0.3, yr: t => pick(t, Q_T, ['Q1', 'Q2', 'Q3', 'Q4']), yrT: t => pick(t, Q_T, Q_T),
+    val: t => t < T_RES ? `Steuer <span class="lime">≈${NB}14.000${NB}€</span>`
+      : `Rücklage <span class="lime">${de(Math.round(14000 * eIO(clamp((t - K.resA) / (K.resZ - K.resA))) / 100) * 100)}${NB}€</span>`,
+    vaT: t => t < T_RES ? K.hoch - 0.3 : T_RES, va: K.hoch - 0.3 },
+  { side: 'L', a: K.impact - 0.3, z: K.mach - 0.3, yr: () => 'Bescheid', val: t => `<span class="lime">14.000${NB}€</span> ${chk(kChk(t, K.bereit))}`, va: K.n14b - 0.3 },
+  { side: 'L', a: K.mach - 0.3, z: T_OVB + 0.1, yr: () => 'Maschine', val: t => chk(kChk(t, K.kaufen), true), va: K.kaufen - 0.3, lime: K.kaufen },
+];
+const els = { L: document.getElementById('L'), R: document.getElementById('R') };
+for (const k in els) { els[k].yrE = els[k].querySelector('.yr'); els[k].txE = els[k].querySelector('.tx'); els[k].stE = els[k].querySelector('.st'); els[k].valE = els[k].querySelector('.val'); els[k].cache = ['', '', null]; }
+const fadeIn = (t, a, d = 0.24) => eOut(clamp((t - a) / d));
+function drawText(t) {
+  for (const k in els) els[k].style.opacity = 0;
+  for (const b of BEATS) {
+    if (t < b.a || t >= b.z) continue;
+    const e = els[b.side], yr = b.yr(t), val = b.val(t);
+    if (e.cache[0] !== yr) { e.txE.textContent = yr; e.cache[0] = yr; }
+    if (e.cache[1] !== val) { e.valE.innerHTML = val; e.cache[1] = val; }
+    if (e.cache[2] !== !!b.long) { e.yrE.classList.toggle('long', !!b.long); e.cache[2] = !!b.long; }
+    const ya = b.yrT ? b.yrT(t) : b.a, va = b.vaT ? b.vaT(t) : b.va;
+    const kY = fadeIn(t, ya, 0.26), kV = fadeIn(t, va, 0.22);
+    e.style.opacity = 1 - clamp((t - (b.z - 0.08)) / 0.08);
+    const ks = b.strike ? eOut(clamp((t - (b.strike - 0.25)) / 0.25)) : 0;       // roter Strich durch das Wort, fertig auf dem Wort
+    e.stE.style.width = `calc(${(ks * 100).toFixed(2)}% + ${(ks * 24).toFixed(1)}px)`;
+    e.yrE.style.opacity = kY < 0.02 ? 0 : (0.35 + 0.65 * sstep(ya + 0.06, ya + 0.28, t) * kY) * (1 - 0.45 * ks);   // erst grau, dann weiß – wie im Original
+    const kl = b.lime ? kChk(t, b.lime) : 0;                                     // Wort färbt sich auf dem Häkchen limette
+    e.txE.style.color = kl > 0 ? `rgb(${Math.round(lerp(239, 212, kl))},${Math.round(lerp(243, 248, kl))},${Math.round(lerp(242, 28, kl))})` : '';
+    e.yrE.style.transform = `translateY(${(1 - kY) * 18}px)`;
+    e.valE.style.opacity = kV;
+    e.valE.style.transform = `translateY(${(1 - kV) * 22}px)`;
+  }
+  // die eine Schlagzeile (wie im Original über der Gesamtkurve): als Ganzes, fertig auf „Das“; „nicht“ färbt sich auf „nicht“ limette
+  const hl = document.getElementById('headline'), hn = document.getElementById('nicht');
+  const ha = K.dasmuss - 0.3, hz = TB0 - 0.22, hk = fadeIn(t, ha, 0.3);
+  hl.style.opacity = (t < ha || t > hz) ? 0 : (0.35 + 0.65 * sstep(ha + 0.05, ha + 0.28, t)) * hk * (1 - clamp((t - (hz - 0.15)) / 0.15));
+  hl.style.transform = `translateY(${(1 - hk) * 16}px)`;
+  const kn = sstep(K.nicht - 0.2, K.nicht, t);
+  hn.style.color = `rgb(${Math.round(lerp(239, 212, kn))},${Math.round(lerp(243, 248, kn))},${Math.round(lerp(242, 28, kn))})`;
+  const t1 = document.getElementById('t1'), t2 = document.getElementById('t2'), pill = document.getElementById('pill'), kost = document.getElementById('kost');
+  const a1 = K.ende - 0.3, k1 = fadeIn(t, a1, 0.3);
+  t1.style.opacity = t < a1 ? 0 : 0.35 + 0.65 * sstep(a1 + 0.06, a1 + 0.3, t);
+  t1.style.transform = `translateY(${(1 - k1) * 16}px)`;
+  const k2 = fadeIn(t, K.steuerb - 0.3, 0.25); t2.style.opacity = k2; t2.style.transform = `translateY(${(1 - k2) * 14}px)`;
+  const k3 = clamp((t - (K.erst - 0.3)) / 0.3);
+  const back = k => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+  pill.style.opacity = sstep(0, 0.35, k3); pill.style.transform = `scale(${k3 <= 0 ? 0.6 : lerp(0.6, 1, back(k3))})`;
+  const k4 = clamp((t - (K.kostenlos - 0.28)) / 0.24);              // „kostenlos“ landet als Stempel auf seinem Wort
+  kost.style.opacity = sstep(0, 0.4, k4); kost.style.transform = `scale(${lerp(1.5, 1, eOut(k4))})`;
+}
+
+// ---------- seek ----------
+const flood = document.getElementById('flood'), black = document.getElementById('black');
+const V3 = new THREE.Vector3(), Q = new THREE.Quaternion(), tmpC = new THREE.Color();
+function gateLight(g, t, ov) {
+  const dt = t - g.tp, pre = sstep(-0.9, 0, dt);
+  const pk = g.mach ? 0.45 : g.s < 0.8 ? 0.55 : 0.75;
+  let I = (g.s < 0.8 ? 0.2 : 0.24) + pk * (dt >= 0 ? Math.exp(-dt * 3.2) : pre) + 0.12 * pre;
+  if (dt > 0) I = Math.max(I, 0.32);
+  return lerp(I, 0.9, ov);
+}
+function seek(t) {
+  t = clamp(t, 0, DURATION);
+  const runA = t < TB0;
+  const ov = eIO(clamp((t - T_OVB) / 1.6));              // End-Übersicht
+  const ovA = runA ? eIO(clamp((t - T_OVA) / 0.8)) * (1 - sstep(TB0 - 0.42, TB0 - 0.02, t)) : 0;   // Übersicht beim Zurückspulen
+  SHARED.uThick.value = lerp(1, 2.4, Math.max(ov, ovA));
+  SHARED.uDim.value = lerp(1, 0.72, eIO(clamp((t - (K.ende + 0.27)) / 0.9)));
+  // Röhren wachsen
+  const xa = headXA(t), xb = headXB(t);
+  const pa = A.grow(xa, runA);
+  const pb = B.grow(xb, !runA);
+  RL.grow(clamp(xb, XQ[0] - 2, XG), !runA && t > T_Q[0] - 0.1);
+  const H_ = runA ? { p: A.head.position, col: A.hU.uCol.value } : { p: B.head.position, col: B.hU.uCol.value };
+  // Kamera
+  const c = camAt(t);
+  cam.position.copy(c.pos); cam.fov = c.fov; cam.up.set(0, 1, 0); cam.lookAt(c.look); cam.updateProjectionMatrix();
+  // Boden
+  gridU.uCam.value.copy(cam.position); gridU.uHead.value.copy(H_.p); gridU.uHeadCol.value.copy(H_.col);
+  let gy;
+  if (runA) gy = lerp(lerp(-22, FLOOR_A, sstep(T_STAIRS[0] - 0.37, T_STAIRS[0] + 0.08, t)), -13, sstep(TB0 - 0.82, TB0 - 0.02, t));
+  else gy = Math.min(pb.y - 13, 60);
+  grid.position.y = lerp(gy, -1, ov);
+  gridU.uFog.value.set(lerp(18, 230, Math.max(ov, ovA)), lerp(115, 330, Math.max(ov, ovA)));
+  gridU.uGlow.value = 1 - Math.max(ov, ovA) * 0.85;
+  gridU.uLK.value = 1 - 0.8 * Math.max(ov, ovA);
+  gridU.uHit.value = runA ? sstep(106, 108.3, xa) * (0.55 + 0.45 * Math.exp(-Math.max(0, t - K.weg) * 2.5)) * (1 - ovA) : 0;
+  // Tore
+  for (const g of ALLG) {
+    const onA = g.line === A;
+    g.mesh.visible = onA ? runA : !runA;
+    if (!g.mesh.visible) continue;
+    let I = gateLight(g, t, onA ? ovA : ov), col = g.col;
+    if (onA && !g.mach) { const passed = xa >= g.x; I = passed ? Math.max(0.32, I) : (xa > g.x - 12 ? I : 0.24); if (t > T_REW - 0.4 && !passed) I = 0.24; }
+    g.mesh.position.copy(g.p0); g.mesh.lookAt(V3.copy(g.p0).add(g.T));
+    let sc = g.s * lerp(1, 0.42, ov);
+    if (g.mach && onA) {           // Maschine gestrichen: Tor erlischt und kippt nach vorn auf den Boden
+      const k = sstep(119.2, 122, xa), fall = k * k;
+      const hinge = V(g.p0.x + 0.4, FLOOR_A, 0);
+      const ang = -fall * Math.PI / 2;
+      const off = V(-0.4, 2.95 * g.s, 0).applyAxisAngle(V(0, 0, 1), ang);
+      g.mesh.position.copy(hinge).add(off);
+      g.mesh.quaternion.setFromAxisAngle(V(0, 1, 0), Math.PI / 2).premultiply(Q.setFromAxisAngle(V(0, 0, 1), ang));
+      I = lerp(0.42, 0.1, k) * (1 + 0.6 * sstep(116, 119, xa) * (1 - k)); col = tmpC.copy(DARK).lerp(C.red, 0.35 * (1 - k));
+    }
+    if (g.mach && !onA) { col = t >= g.tp - 0.05 ? g.col : tmpC.copy(DARK); if (t < g.tp - 0.05) I = 0.35 + 0.15 * sstep(-1.2, 0, t - g.tp); }
+    g.mat.uniforms.uCol.value.copy(col);
+    g.mat.uniforms.uI.value = I * SHARED.uDim.value;
+    const pop = (t >= g.tp ? 1 : 0) * 0.08 * Math.exp(-Math.max(0, t - g.tp) * 5);
+    g.mesh.scale.set(sc * (1 + pop), sc * (1 + pop) * lerp(1, 1.6, ov), sc * lerp(1, 0.4, ov));
+    const ahead = g.x - (onA ? xa : xb);
+    g.mat.uniforms.uA.value = sstep(4.5, 11, cam.position.distanceTo(g.mesh.position)) * (g.mach && onA ? 1 : lerp(sstep(30, 16, ahead), 1, Math.max(ov, ovA)));
+  }
+  // Glaswand
+  const di = t - T_IMPACT;
+  for (const s of shards) {
+    s.mesh.visible = !runA && t > T_IMPACT - 1.75 && di < 2.1;
+    if (!s.mesh.visible) continue;
+    const d = Math.max(0, di - s.delay);
+    const o = V3.copy(GP).addScaledVector(GBv, s.cx).addScaledVector(GUp, s.cy);
+    const crack = di > -0.04 ? 1 : 0, spread = crack * 0.05 * eOut(clamp((di + 0.04) / 0.06));
+    const dirB = s.cx / (s.r || 1), dirU = s.cy / (s.r || 1);
+    const vOut = (7.5 * Math.exp(-s.r / 8) + 1.2) * s.out, vF = (13 * Math.exp(-s.r / 5) + 3) * s.fwd;
+    o.addScaledVector(GBv, dirB * (spread + vOut * d)).addScaledVector(GUp, dirU * (spread + vOut * d) - 5 * d * d).addScaledVector(GT, vF * d);
+    s.mesh.position.copy(o);
+    s.mesh.quaternion.copy(baseQ).premultiply(Q.setFromAxisAngle(s.ax, s.w * d));
+    const fade = 1 - sstep(1.1, 2.0, di);
+    s.mat.uniforms.uA.value = sstep(T_IMPACT - 1.7, T_IMPACT - 1.0, t) * fade * (di < -0.04 ? 0.16 : 0.42);
+    s.lm.opacity = (di < -0.04 ? 0.14 : lerp(0.85, 0.2, clamp(d / 0.8))) * fade;
+    s.lm.color.copy(H_.col).lerp(new THREE.Color(0.6, 0.62, 0.6), 0.55);
+  }
+  // Rücklage-Kopf blitzt beim Aufprall auf
+  RL.hU.uCol.value.copy(C.lime).lerp(new THREE.Color(1, 1, 0.8), 0.6 * Math.exp(-Math.max(0, t - T_IMPACT) * 3) * (t >= T_IMPACT ? 1 : 0));
+  // Rotflut, wenn die stürzende Röhre durch die Kamera fährt
+  const dist = cam.position.distanceTo(A.head.position);
+  const fl = (t > T_GATE + 0.36 && t < T_GATE + 1.01) ? sstep(3.0, 0.8, dist) : 0;
+  flood.style.opacity = (fl * 0.93).toFixed(3);
+  black.style.opacity = Math.max(1 - clamp(t / 0.2), sstep(DURATION - 0.9, DURATION - 0.15, t)).toFixed(3);
+  drawText(t);
+  composer.render();
+}
+
+const ready = (async () => {
+  await Promise.all([document.fonts.load('800 100px Archivo'), document.fonts.load('700 40px JBMono')]);
+  await document.fonts.ready;
+  renderer.compile(scene, cam);
+  seek(0); seek(21.9); seek(0);
+})();
+window.FILM = { duration: DURATION, width: W, height: H, ready, seek };
+</script>
+</body>
+</html>

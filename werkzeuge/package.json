@@ -1,0 +1,1 @@
+{"name":"werkzeuge","private":true,"type":"module","dependencies":{"gsap":"^3.15.0","p5":"^2.3.3","p5.brush":"^2.2.3","puppeteer-core":"^24.0.0","three":"^0.186.1"}}
