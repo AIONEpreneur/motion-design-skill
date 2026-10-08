@@ -4,8 +4,8 @@ Pfade:
 - Werkzeuge: `W="$SKILL/werkzeuge"` (`$SKILL` = der Ordner dieses Skills, siehe „Base directory“ beim Laden). Dort liegen render.mjs (mit node_modules), vo.py, elevenlabs.py, wortzeiten.py, pegel.py, mix.sh, textbogen.py und dichte.py.
 - Projekte: `./erklaervideos/<kunden-slug>/` im aktuellen Arbeitsordner, angelegt mit `scripts/neues_projekt.py`.
 - Python mit soundfile: `~/.local/share/voice-tts/.venv-mlx/bin/python` oder `uv run --with soundfile`.
-- ElevenLabs-Schlüssel: wird aus der Umgebungsvariable `ELEVENLABS_API_KEY` oder aus `~/.claude/settings.json` (`env.ELEVENLABS_API_KEY`) gelesen. Fehlt er, den Nutzer einmal danach fragen, erklären, wo er ihn bekommt (elevenlabs.io → Developers → API Keys, ohne Einschränkung oder mindestens mit Zugriff auf Text to Speech und Voices) und ihn mit seinem Einverständnis in `~/.claude/settings.json` unter `env` eintragen. Für kommerzielle Nutzung und für Bibliotheksstimmen braucht der Nutzer einen bezahlten Tarif.
-- kie.ai-Schlüssel (`KIE_API_KEY`) nur für den Ausweichweg `--anbieter kie`.
+- Schlüssel: stehen in der Textdatei `$SKILL/schluessel.txt` (`ELEVENLABS_API_KEY=…`). Fehlt der ElevenLabs-Schlüssel, `python3 "$W/pruefen.py" --schluessel` ausführen: Das legt die Datei an und öffnet sie im Texteditor. Dem Nutzer sagen, wo er den Schlüssel bekommt (elevenlabs.io → Developers → API Keys, ohne Einschränkung oder mindestens mit Zugriff auf Text to Speech und Voices), dass er ihn hinter `ELEVENLABS_API_KEY=` einfügt und speichert. Den Schlüssel nie im Chat erfragen. Für kommerzielle Nutzung und für Bibliotheksstimmen braucht der Nutzer einen bezahlten Tarif.
+- kie.ai-Schlüssel (`KIE_API_KEY=` in derselben Datei) nur für den Ausweichweg `--anbieter kie`.
 
 Alle Befehle laufen im Projektordner.
 

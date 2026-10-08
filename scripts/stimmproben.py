@@ -57,7 +57,7 @@ else:
     if not os.environ.get('KIE_API_KEY'):
         os.environ['KIE_API_KEY'] = el.einstellung('KIE_API_KEY')
     if not os.environ['KIE_API_KEY']:
-        sys.exit('KIE_API_KEY fehlt: als Umgebungsvariable setzen oder in ~/.claude/settings.json unter "env" eintragen (Schlüssel: kie.ai → API Keys).')
+        sys.exit(f'KIE_API_KEY fehlt: in {el.SCHLUESSELDATEI} eintragen (Schlüssel: kie.ai → API Keys).')
     if not a.szene:
         sys.exit('--szene fehlt: kie.ai braucht die Regieanweisung als freien Text.')
     stimmen = [(s.strip(), s.strip()) for s in (a.stimmen or 'Charon,Sulafat,Achird').split(',') if s.strip()]

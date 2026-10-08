@@ -42,17 +42,21 @@ mkdir -p ~/.cache/whisper && curl -L -o ~/.cache/whisper/ggml-large-v3-turbo.bin
 npx @puppeteer/browsers install chrome-headless-shell@stable --path ~/.cache/puppeteer
 ```
 
-Den ElevenLabs-Schlüssel (elevenlabs.io → Developers → API Keys) trägst du in `~/.claude/settings.json` ein:
+### Schlüssel eintragen
 
-```json
-{ "env": { "ELEVENLABS_API_KEY": "dein-schlüssel" } }
+Beim ersten Lauf legt `pruefen.py` die Textdatei `schluessel.txt` im Skill-Ordner an und öffnet sie im Texteditor. Du fügst deinen ElevenLabs-Schlüssel (elevenlabs.io → Developers → API Keys) direkt hinter das Gleichheitszeichen ein und speicherst:
+
+```
+ELEVENLABS_API_KEY=dein-schlüssel
 ```
 
-Weitere Einträge sind optional:
+Die Datei bleibt auf deinem Rechner und wird nicht mit hochgeladen. Später öffnest du sie wieder mit `python3 pruefen.py --schluessel` oder sagst Claude: „Öffne die Schlüsseldatei vom Erklärvideo-Skill.“
+
+Weitere Einträge in derselben Datei sind optional:
 
 | Eintrag | Wirkung |
 |---|---|
-| `ELEVENLABS_STIMMEN` | feste Stimmen für die Hörproben, Komma-Liste aus Namen oder Voice-IDs, z. B. `"Meine Stimme,<voice-id>,<voice-id>"`. Ohne den Eintrag sucht Claude jedes Mal drei passende deutsche Stimmen aus der Bibliothek. |
+| `ELEVENLABS_STIMMEN` | feste Stimmen für die Hörproben, mit Komma getrennt, z. B. `Meine Stimme,<voice-id>,<voice-id>`. Ohne den Eintrag sucht Claude jedes Mal drei passende deutsche Stimmen aus der Bibliothek. |
 | `ELEVENLABS_MODELL` | anderes Modell als `eleven_v3` |
 | `KIE_API_KEY` | Ausweichweg über kie.ai (`--anbieter kie`) |
 

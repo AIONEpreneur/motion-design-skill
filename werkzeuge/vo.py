@@ -17,7 +17,7 @@ Nutzung:
   python3 vo.py skript.txt --stimme <Name oder Voice-ID> --out out [--modell eleven_v3] [--stabilitaet 0.5] [--versuche 3]
   python3 vo.py skript.txt --anbieter kie --stimme Charon --out out [--szene "Regieanweisung"]
 Ohne --stimme nimmt ElevenLabs die erste Stimme aus ELEVENLABS_STIMMEN, kie.ai nimmt Charon.
-Schlüssel: ELEVENLABS_API_KEY bzw. KIE_API_KEY, als Umgebungsvariable oder in ~/.claude/settings.json (env).
+Schlüssel: ELEVENLABS_API_KEY bzw. KIE_API_KEY in schluessel.txt im Skill-Ordner (legt pruefen.py an).
 Kosten: ElevenLabs rechnet nach Zeichen ab (30-s-Skript ≈ 500–600 Zeichen je Versuch), kie.ai ~2,2 Credits je 30 s.
 """
 import argparse, datetime, difflib, json, os, re, shutil, subprocess, sys, tempfile
@@ -101,7 +101,7 @@ else:
     if not os.environ.get('KIE_API_KEY'):
         os.environ['KIE_API_KEY'] = el.einstellung('KIE_API_KEY')
     if not os.environ['KIE_API_KEY'] and not a.datei:
-        sys.exit('KIE_API_KEY fehlt: als Umgebungsvariable setzen oder in ~/.claude/settings.json unter "env" eintragen (Schlüssel: kie.ai → API Keys).')
+        sys.exit(f'KIE_API_KEY fehlt: in {el.SCHLUESSELDATEI} eintragen (Schlüssel: kie.ai → API Keys).')
     if not whisper_da:
         sys.exit('whisper.cpp mit Modell fehlt, ohne Transkription gibt es mit kie.ai keine Wortzeiten (siehe werkzeuge/pruefen.py).')
     stimmname = a.stimme or 'Charon'; modell = 'google/gemini-2-5-pro-tts'; voice_id = None

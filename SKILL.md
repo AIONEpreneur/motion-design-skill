@@ -10,7 +10,7 @@ description: |
 ---
 
 > **Pfade:** `$SKILL` ist der Ordner dieses Skills (steht beim Laden als „Base directory“). Werkzeuge: `$SKILL/werkzeuge`, Stilvorlagen: `$SKILL/vorlagen`, Beispielvideos: `$SKILL/beispiele`. Kundenprojekte entstehen in `./erklaervideos/` im aktuellen Arbeitsordner.
-> **Vor dem ersten Video** einmal `python3 "$SKILL/werkzeuge/pruefen.py"` ausführen. Es meldet, was noch fehlt (Node-Pakete, ffmpeg, whisper.cpp mit Modell, Python-Pakete, Chrome, ElevenLabs-Schlüssel) und wie man es installiert.
+> **Vor dem ersten Video** einmal `python3 "$SKILL/werkzeuge/pruefen.py"` ausführen. Es meldet, was noch fehlt (Node-Pakete, ffmpeg, whisper.cpp mit Modell, Python-Pakete, Chrome, ElevenLabs-Schlüssel) und wie man es installiert. Fehlt der Schlüssel, legt es `schluessel.txt` im Skill-Ordner an und öffnet sie im Texteditor; der Nutzer fügt den Schlüssel dort ein und speichert. Den Schlüssel nie im Chat erfragen.
 
 # Erklärvideo
 

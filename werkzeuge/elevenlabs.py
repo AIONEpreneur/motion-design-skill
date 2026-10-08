@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """ElevenLabs-Client für die Sprecherstimme.
 
-Nur Standardbibliothek, kein pip. Der Schlüssel kommt aus ELEVENLABS_API_KEY
-bzw. ~/.claude/settings.json (env).
+Nur Standardbibliothek, kein pip. Der Schlüssel steht in schluessel.txt im Skill-Ordner
+(legt werkzeuge/pruefen.py an und öffnet sie im Texteditor). Umgebungsvariablen und
+~/.claude/settings.json (env) gehen auch.
 
     # Eigene Stimmen im Konto (auch geklonte)
     python3 elevenlabs.py stimmen
@@ -20,15 +21,49 @@ bzw. ~/.claude/settings.json (env).
     python3 elevenlabs.py guthaben
 
 <stimme> ist eine Voice-ID oder der Name einer eigenen Stimme.
-Optionale Einstellungen (Umgebung oder ~/.claude/settings.json → env):
+Optionale Einstellungen (ebenfalls in schluessel.txt):
   ELEVENLABS_STIMMEN  feste Stimmen für die Hörproben, Komma-Liste aus Namen oder Voice-IDs
   ELEVENLABS_MODELL   Modell, Standard eleven_v3 (versteht Audio-Tags wie [warmly])
 """
 import base64, json, os, re, sys, time, urllib.error, urllib.parse, urllib.request, wave
 
+SCHLUESSELDATEI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'schluessel.txt')
+VORLAGE = '''# Deine Schlüssel für den Erklärvideo-Skill.
+# Den Schlüssel direkt hinter das Gleichheitszeichen einfügen, ohne Leerzeichen und ohne Anführungszeichen.
+# Danach speichern. Diese Datei bleibt auf deinem Rechner und wird nicht mit hochgeladen.
+
+# Pflicht – ElevenLabs: elevenlabs.io → Developers → API Keys
+ELEVENLABS_API_KEY=
+
+# Optional – feste Stimmen für die Hörproben: Namen oder Voice-IDs, mit Komma getrennt
+ELEVENLABS_STIMMEN=
+
+# Optional – Ausweichweg über kie.ai: kie.ai → API Keys
+KIE_API_KEY=
+'''
+
+
+def schluesseldatei_anlegen():
+    """Legt schluessel.txt aus der Vorlage an, falls sie fehlt. Gibt den Pfad zurück."""
+    if not os.path.exists(SCHLUESSELDATEI):
+        open(SCHLUESSELDATEI, 'w', encoding='utf-8').write(VORLAGE)
+    return SCHLUESSELDATEI
+
+
+def _aus_datei(name):
+    """Wert NAME=… aus schluessel.txt, sonst ''."""
+    try:
+        for zeile in open(SCHLUESSELDATEI, encoding='utf-8-sig'):   # utf-8-sig: Notepad schreibt manchmal ein BOM
+            k, _, v = zeile.strip().partition('=')
+            if k.strip() == name and not zeile.lstrip().startswith('#'):
+                return v.strip().strip('"\'“”„')   # Anführungszeichen, auch typografische aus TextEdit, weg
+    except OSError: pass
+    return ''
+
+
 def einstellung(name, standard=''):
-    """Wert aus der Umgebung, sonst aus ~/.claude/settings.json (env)."""
-    wert = os.environ.get(name, '').strip()
+    """Wert aus der Umgebung, sonst aus schluessel.txt, sonst aus ~/.claude/settings.json (env)."""
+    wert = os.environ.get(name, '').strip() or _aus_datei(name)
     if not wert:
         try: wert = str(json.load(open(os.path.expanduser('~/.claude/settings.json')))['env'][name]).strip()
         except Exception: wert = ''
@@ -43,8 +78,8 @@ FORMAT = 'mp3_44100_128'   # auf allen Tarifen erlaubt; WAV/PCM mit 44,1 kHz ers
 def schluessel():
     key = einstellung('ELEVENLABS_API_KEY')
     if not key:
-        raise SystemExit('ELEVENLABS_API_KEY fehlt: als Umgebungsvariable setzen oder in ~/.claude/settings.json unter "env" '
-                         'eintragen (Schlüssel: elevenlabs.io → Developers → API Keys).')
+        raise SystemExit(f'ELEVENLABS_API_KEY fehlt: in {SCHLUESSELDATEI} eintragen (Schlüssel: elevenlabs.io → Developers → '
+                         'API Keys). „python3 werkzeuge/pruefen.py“ legt die Datei an und öffnet sie.')
     return key
 
 
