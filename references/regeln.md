@@ -36,7 +36,9 @@ Alle Regeln stammen aus Korrekturen des Auftraggebers an 22 Erklärvideos (Septe
 - Farben leitest du aus Branche und Marke des Kunden ab. Beim Blitzer-Thema also Verkehrsfarben, nicht Beige.
 
 ## Stimme und Ton
-- kie.ai, Modell `google/gemini-2-5-pro-tts`. Stimmen: Charon, Sulafat, Achird. Welche passt, entscheidet der Nutzer per Hörprobe.
+- ElevenLabs, Modell `eleven_v3`, mit Zeitmarken je Zeichen. Stimmen: die eigene Stimme des Nutzers oder deutsche Stimmen aus der Bibliothek. Welche passt, entscheidet der Nutzer per Hörprobe.
+- Den Tonfall steuern Audio-Tags: englische Wörter in eckigen Klammern am Satzanfang, höchstens einer pro Satz. Wie stark sie wirken, hängt von der Stimme ab, deshalb gehören dieselben Tags schon in die Hörprobe. Bei Stabilität 1.0 (robust) wirken sie kaum, Standard ist 0.5.
+- Ausweichweg: kie.ai mit `google/gemini-2-5-pro-tts` und den Stimmen Charon, Sulafat, Achird, Regie als freier Text.
 - **Nie im Tempo strecken oder stauchen** (kein atempo): Das verschluckt Silben.
 - Musik und Geräusche komponierst du **für jedes Video neu**, passend zu seinen Wörtern. Keine gemeinsamen Presets über mehrere Videos.
 

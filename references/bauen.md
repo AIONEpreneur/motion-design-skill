@@ -1,21 +1,26 @@
 # Bauen, prüfen, ausliefern
 
 Pfade:
-- Werkzeuge: `W="$SKILL/werkzeuge"` (`$SKILL` = der Ordner dieses Skills, siehe „Base directory“ beim Laden). Dort liegen render.mjs (mit node_modules), vo_kie.py, wortzeiten.py, pegel.py, mix.sh, textbogen.py und dichte.py.
+- Werkzeuge: `W="$SKILL/werkzeuge"` (`$SKILL` = der Ordner dieses Skills, siehe „Base directory“ beim Laden). Dort liegen render.mjs (mit node_modules), vo.py, elevenlabs.py, wortzeiten.py, pegel.py, mix.sh, textbogen.py und dichte.py.
 - Projekte: `./erklaervideos/<kunden-slug>/` im aktuellen Arbeitsordner, angelegt mit `scripts/neues_projekt.py`.
 - Python mit soundfile: `~/.local/share/voice-tts/.venv-mlx/bin/python` oder `uv run --with soundfile`.
-- kie.ai-Schlüssel: wird aus der Umgebungsvariable `KIE_API_KEY` oder aus `~/.claude/settings.json` (`env.KIE_API_KEY`) gelesen. Fehlt er, den Nutzer einmal danach fragen, erklären, wo er ihn bekommt (kie.ai → API Keys) und ihn mit seinem Einverständnis in `~/.claude/settings.json` unter `env` eintragen.
+- ElevenLabs-Schlüssel: wird aus der Umgebungsvariable `ELEVENLABS_API_KEY` oder aus `~/.claude/settings.json` (`env.ELEVENLABS_API_KEY`) gelesen. Fehlt er, den Nutzer einmal danach fragen, erklären, wo er ihn bekommt (elevenlabs.io → Developers → API Keys, ohne Einschränkung oder mindestens mit Zugriff auf Text to Speech und Voices) und ihn mit seinem Einverständnis in `~/.claude/settings.json` unter `env` eintragen. Für kommerzielle Nutzung und für Bibliotheksstimmen braucht der Nutzer einen bezahlten Tarif.
+- kie.ai-Schlüssel (`KIE_API_KEY`) nur für den Ausweichweg `--anbieter kie`.
 
 Alle Befehle laufen im Projektordner.
 
 ## 1 · Stimme
-1. Den freigegebenen Sprechertext nach `skript.txt` schreiben, eine Zeile pro Bild-Beat.
-2. `python3 "$W/vo_kie.py" skript.txt --stimme <gewählte Stimme> --out out --szene "<Regieanweisung aus der Hörprobe>"`
-   Ergebnis: `out/vo.wav` und `out/vo.json`. Das Tempo nie ändern.
-3. Die Aufnahme anhören, also transkribieren lassen: Stimmt jedes Wort, stimmt die Betonung? Wenn nicht, neu erzeugen.
+1. Den freigegebenen Sprechertext nach `skript.txt` schreiben, eine Zeile pro Bild-Beat. Die Audio-Tags aus der Hörprobe an den Anfang der passenden Zeilen setzen, z. B. `[concerned]` beim Problem, `[confident]` ab der Wendung, `[warmly]` beim Angebot. Tags werden nicht gesprochen und zählen nicht als Wörter.
+2. `python3 "$W/vo.py" skript.txt --stimme <Voice-ID der gewählten Stimme> --out out`
+   Ergebnis: `out/vo.wav` und `out/vo.json`. Das Tempo nie ändern. Die Wortzeiten kommen aus den Zeitmarken von ElevenLabs (`"zeiten": "elevenlabs"` in vo.json).
+   - Liefert `eleven_v3` dreimal nichts, nimmt vo.py einmal `eleven_multilingual_v2` (ohne Tags) und sagt das.
+   - Ausweichweg kie.ai: `python3 "$W/vo.py" skript.txt --anbieter kie --stimme <Charon|Sulafat|Achird> --out out --szene "<Regieanweisung aus der Hörprobe>"`. Hier misst whisper die Wortzeiten (`"zeiten": "whisper"`).
+3. Die Aufnahme anhören, also transkribieren lassen: Stimmt jedes Wort, stimmt die Betonung? vo.py prüft den Text per whisper und nimmt den besten von bis zu drei Versuchen. Passt die Betonung nicht, Tags anpassen und neu erzeugen.
 
 ## 2 · Wortzeiten (Pflicht)
-1. `python3 "$W/wortzeiten.py" out/vo.wav out/vo.json`
+1. Wortzeiten gegenprüfen:
+   - ElevenLabs (`"zeiten": "elevenlabs"`): `python3 "$W/wortzeiten.py" out/vo.wav out/vo.json --nur-pruefen`. Die Zeitmarken bleiben stehen. Weicht ein Wort um mehr als 0,2 s ab, entscheidet die Pegelkurve, welche Zeit stimmt.
+   - kie.ai (`"zeiten": "whisper"`): `python3 "$W/wortzeiten.py" out/vo.wav out/vo.json` misst neu und überschreibt die Zeiten.
 2. Jedes Schlüsselwort, auf das ein Bild, ein Wort oder ein Effekt fällt, an der Pegelkurve prüfen:
    `python3 "$W/pegel.py" out/vo.wav <von> <bis>`
    - Der Wortanfang ist der Sprung auf Sprachpegel, 25–40 dB über Grund.

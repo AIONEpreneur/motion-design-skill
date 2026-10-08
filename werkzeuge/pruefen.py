@@ -40,12 +40,18 @@ if not chrome:
 zeile(chrome is not None, 'Chrome zum Rendern' + (f' ({chrome})' if chrome else ''),
       f'cd "{HIER}" && npx @puppeteer/browsers install chrome-headless-shell@stable --path ~/.cache/puppeteer')
 
-# kie.ai-Schlüssel (Stimmen)
-key = os.environ.get('KIE_API_KEY')
-if not key:
-    try: key = json.load(open(os.path.expanduser('~/.claude/settings.json')))['env']['KIE_API_KEY']
-    except Exception: key = None
-zeile(bool(key), 'kie.ai-Schlüssel für die Stimmen',
-      'Schlüssel auf kie.ai → API Keys anlegen und in ~/.claude/settings.json eintragen: {"env": {"KIE_API_KEY": "…"}}')
+# Schlüssel für die Stimmen: ElevenLabs ist Pflicht, kie.ai nur Ausweichweg
+def einstellung(name):
+    wert = os.environ.get(name)
+    if not wert:
+        try: wert = json.load(open(os.path.expanduser('~/.claude/settings.json')))['env'][name]
+        except Exception: wert = None
+    return wert
+zeile(bool(einstellung('ELEVENLABS_API_KEY')), 'ElevenLabs-Schlüssel für die Stimmen',
+      'Schlüssel auf elevenlabs.io → Developers → API Keys anlegen und in ~/.claude/settings.json eintragen: '
+      '{"env": {"ELEVENLABS_API_KEY": "…"}}')
+if einstellung('ELEVENLABS_STIMMEN'):
+    print('ℹ️  Feste Stimmen (ELEVENLABS_STIMMEN): ' + einstellung('ELEVENLABS_STIMMEN'))
+print('ℹ️  kie.ai-Schlüssel (nur für --anbieter kie): ' + ('vorhanden' if einstellung('KIE_API_KEY') else 'nicht eingetragen'))
 
 print('\nAlles bereit. Sag in Claude Code: „Ich brauche ein Erklärvideo für meine Firma.“' if ok_alle else '\nBitte die ❌-Punkte nachholen und dann erneut prüfen.')

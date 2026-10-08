@@ -14,7 +14,7 @@
 //
 // Untertitel: Liegt im Projektordner eine untertitel.json, wird sie automatisch über jedes Bild gelegt
 // (abschalten mit --ohne-untertitel, andere Datei mit --untertitel=pfad). Format:
-//   { "vo": "out/vo.json",                       // Wortzeiten von vo_kie.py
+//   { "vo": "out/vo.json",                       // Wortzeiten von vo.py
 //     "stil": { "font": "fonts/<eigene Schrift>.ttf", "size": 52, "y": 992,
 //               "bg": "#FFC526", "fg": "#0E1A30",     // Kasten und Schrift: muss sich klar vom Filmhintergrund abheben
 //               "hiBg": "#0E1A30", "hiFg": "#FFC526", // gerade gesprochenes Wort

@@ -3,14 +3,14 @@ name: erklaervideo
 description: |
   Baut ein 30-Sekunden-Erklärvideo (16:9) für ein Produkt oder eine Dienstleistung. Der Ablauf ist fest:
   Interview mit dem Nutzer, 3 Stilvorschläge aus einer Bibliothek mit 22 erprobten Stilen, Sprechertext
-  und Ablauf zur Freigabe, 3 Hörproben über kie.ai, danach bauen, selbst prüfen und das fertige Video als
+  und Ablauf zur Freigabe, 3 Hörproben über ElevenLabs, danach bauen, selbst prüfen und das fertige Video als
   abspielbare Seite ausliefern.
   Auslöser: "Erklärvideo", "Erklärfilm", "Werbevideo für meine Firma", "Video für mein Produkt",
   "Video für meine Dienstleistung", "/erklaervideo".
 ---
 
 > **Pfade:** `$SKILL` ist der Ordner dieses Skills (steht beim Laden als „Base directory“). Werkzeuge: `$SKILL/werkzeuge`, Stilvorlagen: `$SKILL/vorlagen`, Beispielvideos: `$SKILL/beispiele`. Kundenprojekte entstehen in `./erklaervideos/` im aktuellen Arbeitsordner.
-> **Vor dem ersten Video** einmal `python3 "$SKILL/werkzeuge/pruefen.py"` ausführen. Es meldet, was noch fehlt (Node-Pakete, ffmpeg, whisper.cpp mit Modell, Python-Pakete, Chrome, kie.ai-Schlüssel) und wie man es installiert.
+> **Vor dem ersten Video** einmal `python3 "$SKILL/werkzeuge/pruefen.py"` ausführen. Es meldet, was noch fehlt (Node-Pakete, ffmpeg, whisper.cpp mit Modell, Python-Pakete, Chrome, ElevenLabs-Schlüssel) und wie man es installiert.
 
 # Erklärvideo
 
@@ -48,19 +48,27 @@ Bleibt eine Antwort vage, frag einmal gezielt nach, zum Beispiel nach einer Zahl
 
 ## 4 · Drei Hörproben
 
-1. Nimm die ersten ein bis zwei Sätze des freigegebenen Texts. Schreib eine Regieanweisung: Tonfall am Anfang, ab der Wendung und am Ende, dazu die Wörter, die betont werden sollen.
-2. Erzeuge die Proben:
-   `python3 ~/.claude/skills/erklaervideo/scripts/stimmproben.py --text "…" --szene "…" --out <projekt>/proben`
-   - Stimmen: Charon (männlich, sachlich), Sulafat (weiblich, warm), Achird (männlich, freundlich).
-   - Kosten: unter 3 Credits.
-3. Zeig die drei Proben abspielbar auf einer Artifact-Seite (`references/zeigen.md`) und lass wählen.
+Die Stimme kommt von ElevenLabs. Werkzeug: `E="$SKILL/werkzeuge/elevenlabs.py"`.
+
+1. **Drei Stimmen auswählen:**
+   - Stehen in `ELEVENLABS_STIMMEN` feste Stimmen, nimm diese.
+   - Sonst die eigenen Stimmen des Nutzers ansehen: `python3 "$E" stimmen`. Eine eigene, geklonte Stimme ist immer eine der drei.
+   - Den Rest aus der Bibliothek suchen: `python3 "$E" bibliothek --sprache de --geschlecht male` bzw. `female`, dazu passend `--einsatz advertisement`, `narrative_story` oder `informative_educational`. Wähle drei deutlich verschiedene Stimmen, die zum Briefing passen, etwa männlich sachlich, weiblich warm und männlich freundlich. Nur Hochdeutsch ohne Dialekt.
+   - Bibliotheksstimmen erst ins Konto holen: `python3 "$E" hinzufuegen <owner> <voice_id> "<Name>"`. Das belegt einen Stimmplatz.
+2. Nimm die ersten ein bis zwei Sätze des freigegebenen Texts und setz die Regie als **Audio-Tags** davor: englische Wörter in eckigen Klammern, höchstens einer pro Satz, z. B. `[concerned]` beim Problem, `[confident]` ab der Wendung, `[warmly]` beim Angebot. Die Tags werden nicht gesprochen.
+3. Erzeuge die Proben:
+   `python3 "$SKILL/scripts/stimmproben.py" --text "[concerned] …" --stimmen "<Name oder Voice-ID>,<Voice-ID>,<Voice-ID>" --out <projekt>/proben`
+   - Kosten: Abrechnung nach Zeichen, alle drei Proben zusammen meist unter 500 Zeichen.
+4. Zeig die drei Proben abspielbar auf einer Artifact-Seite (`references/zeigen.md`) und lass wählen. Merk dir die Voice-ID der gewählten Stimme und die Tags, beides brauchst du beim Bauen.
+
+**Ausweichweg kie.ai** (kein ElevenLabs-Schlüssel oder ElevenLabs fällt aus): `--anbieter kie` mit den Stimmen Charon (männlich, sachlich), Sulafat (weiblich, warm) und Achird (männlich, freundlich). Die Regie steht dann ohne Tags als freier Text in `--szene "…"`, mit den Wörtern, die betont werden sollen. Kosten: unter 3 Credits.
 
 ## 5 · Bauen, selbst prüfen, ausliefern
 
 Folge `references/bauen.md` Schritt für Schritt. Kurz:
 
 1. **Projekt anlegen:** `python3 ~/.claude/skills/erklaervideo/scripts/neues_projekt.py <stil-nr> <kunden-slug>`. Die Vorlage des Stils ist nur der technische Startpunkt, die Geschichte baust du neu.
-2. **Stimme:** komplette Aufnahme mit der gewählten Stimme, dann die Wortzeiten messen und die Schlüsselwörter an der Pegelkurve nachprüfen.
+2. **Stimme:** komplette Aufnahme mit der gewählten Stimme und den Audio-Tags. Die Wortzeiten liefert ElevenLabs mit, die Schlüsselwörter prüfst du an der Pegelkurve nach.
 3. **Regie:** Tabelle Beat für Beat mit Bild, Hervorhebung, Wort am Objekt und Zeitpunkt. Alle Zeiten kommen aus den gemessenen Wortzeiten.
 4. **Bilder und Ton bauen:** Film-Code im gewählten Stil, eigene Musik und Geräusche auf die Wörter gelegt.
 5. **Rendern und selbst prüfen:** Textbogen und Standbilder an jedem Schlüsselwort ansehen und korrigieren. Mindestens eine Korrekturrunde, bevor der Nutzer etwas sieht.
